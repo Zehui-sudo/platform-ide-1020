@@ -20,8 +20,8 @@ function repoRoot(): string {
 
 function parseLineForStages(job: JobRecord, line: string) {
   try {
-    // collect stage start
-    if (/\[1\/2\]\s*调用\s*Gemini\s*推荐教材/.test(line)) {
+    // collect stage start (兼容不同提示语)
+    if (/\[1\/2\]\s*调用\s*Gemini\s*推荐教材/.test(line) || /运行\s*TOC\s*流水线/.test(line)) {
       updateStage(job, 'collect', { status: 'running', detail: '调用 Gemini 推荐经典教材' });
     }
     const mPar = line.match(/并行检索教材目录 .*待检索=(\d+)\s*本/);
@@ -31,7 +31,8 @@ function parseLineForStages(job: JobRecord, line: string) {
       job.processed = 0;
       updateStage(job, 'collect', { status: 'running', progress: 0, detail: `已完成 0/${total}` });
     }
-    if (/^完成: 《/.test(line) || /^完成但有错误:/.test(line) || /^任务异常:/.test(line)) {
+    // 每本完成（去除时间戳前缀的限制）
+    if (/完成\s*[:：]\s*《/.test(line) || /完成但有错误\s*[:：]/.test(line) || /任务异常\s*[:：]/.test(line)) {
       if (typeof job.processed !== 'number') job.processed = 0;
       job.processed += 1;
       const total = job.totalToFetch || 0;

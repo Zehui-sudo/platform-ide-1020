@@ -158,7 +158,8 @@ export function ThemeGenerator() {
           </TooltipContent>
         </Tooltip>
 
-        <PopoverContent className="w-[380px] p-4" align="center" side="bottom">
+        <PopoverContent className="w-[420px] p-4" align="center" side="bottom">
+          {/* 阶段1：输入表单 */}
           {!isGenerating && !jobId && !resultOutline && (
             <div className="space-y-3">
               <h4 className="font-medium text-sm leading-none">生成学习主题</h4>
@@ -200,7 +201,66 @@ export function ThemeGenerator() {
             </div>
           )}
 
-          {(isGenerating || jobId) && (
+          {/* 阶段3：结果预览（优先级更高，出现后不再显示阶段2内容） */}
+          {!isGenerating && !!resultOutline && (
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm leading-none">大纲已生成</h4>
+              <div className="text-[11px] text-muted-foreground break-words">主题: {resultOutline?.reconstructed_outline?.meta?.subject || themeName}</div>
+              <div className="text-[11px] text-muted-foreground">类型: {resultOutline?.reconstructed_outline?.meta?.subject_type}</div>
+              {(() => {
+                const outline = resultOutline?.reconstructed_outline || null;
+                let groups: any[] = [];
+                if (Array.isArray(outline?.groups)) groups = outline.groups;
+                else if (Array.isArray(outline?.chapters)) groups = outline.chapters;
+                else if (Array.isArray(outline?.sections)) groups = [{ title: outline?.title || '目录', sections: outline.sections }];
+                const title = outline?.title || '生成目录';
+                if (!groups.length) return null;
+                return (
+                  <div className="mt-1.5 border rounded bg-muted/40">
+                    <div className="px-2 py-1.5 text-xs font-medium border-b">{title} · 目录预览</div>
+                    <div className="max-h-56 overflow-auto p-2">
+                      {groups.map((g: any, gi: number) => (
+                        <div key={g?.id || gi} className="mb-2 last:mb-0">
+                          <div className="text-xs font-medium leading-snug">{g?.title || `第${gi + 1}章`}</div>
+                          <ul className="mt-1 pl-4 list-disc space-y-0.5">
+                            {Array.isArray(g?.sections) && g.sections.map((s: any, si: number) => (
+                              <li key={s?.id || si} className="text-[11px] leading-tight">
+                                {typeof s === 'string' ? s : (s?.title || `节 ${gi + 1}.${si + 1}`)}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+              <div className="flex gap-2">
+                <Button
+                  className="h-8 text-xs"
+                  onClick={() => {
+                    // TODO: 接入章节内容生成 API
+                    console.log('confirm-outline', resultOutline);
+                    setIsOpen(false);
+                  }}
+                >基于此大纲生成知识点</Button>
+                <Button
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={() => {
+                    // 复位，回到阶段1
+                    setResultOutline(null);
+                    setLogs([]);
+                    setJobId(null);
+                    setIsGenerating(false);
+                  }}
+                >放弃并重新生成</Button>
+              </div>
+            </div>
+          )}
+
+          {/* 阶段2：进度与日志 */}
+          {(isGenerating || (!!jobId && !resultOutline)) && (
             <div className="space-y-3">
               <h4 className="font-medium text-sm leading-none">生成进度</h4>
               <div className="space-y-2">
@@ -208,7 +268,7 @@ export function ThemeGenerator() {
                   // 计算当前阶段与提示
                   const currentStage = (stageCollect.status !== 'completed' && stageCollect.status !== 'error') ? '搜集参考教材' : '整合生成大纲';
                   const detail = (currentStage === '搜集参考教材') ? (stageCollect.detail || '') : (stageOutline.detail || '');
-                  const ended = (!isGenerating && resultOutline);
+                  const ended = (!isGenerating && !!resultOutline);
                   const failed = (stageCollect.status === 'error' || stageOutline.status === 'error');
                   return (
                     <div className="flex items-center gap-2 text-xs">
@@ -231,16 +291,6 @@ export function ThemeGenerator() {
                 <pre className="bg-muted/50 rounded p-2 max-h-48 overflow-auto text-[11px] leading-tight whitespace-pre-wrap">
 {logs.slice(-200).join('\n')}
                 </pre>
-              )}
-              {!isGenerating && resultOutline && (
-                <div className="space-y-2">
-                  <div className="text-xs">大纲已生成</div>
-                  <div className="text-[11px] text-muted-foreground break-words">主题: {resultOutline?.reconstructed_outline?.meta?.subject || themeName}</div>
-                  <div className="text-[11px] text-muted-foreground">类型: {resultOutline?.reconstructed_outline?.meta?.subject_type}</div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="h-7 px-2 text-xs" onClick={() => setIsOpen(false)}>关闭</Button>
-                  </div>
-                </div>
               )}
             </div>
           )}
