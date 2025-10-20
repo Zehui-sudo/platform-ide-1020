@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
+import { useLearningStore } from "@/store/learningStore";
 import {
   Popover,
   PopoverContent,
@@ -32,6 +33,162 @@ export function ThemeGenerator() {
   const [stageOutline, setStageOutline] = useState<{status: 'pending'|'running'|'completed'|'error', detail?: string}>({ status: 'pending' });
   const [resultOutline, setResultOutline] = useState<any>(null);
   const evtSrcRef = useRef<EventSource | null>(null);
+  // 第四阶段：内容生成
+  const [isContentGenerating, setIsContentGenerating] = useState(false);
+  const [contentJobId, setContentJobId] = useState<string | null>(null);
+  const [contentStage, setContentStage] = useState<{status: 'pending'|'running'|'completed'|'error', detail?: string}>({ status: 'pending' });
+  const [contentResult, setContentResult] = useState<any>(null);
+  const evtContentRef = useRef<EventSource | null>(null);
+  const loadPath = useLearningStore((s) => s.loadPath);
+
+  // --- 本地持久化（避免刷新丢失） ---
+  const STATE_KEY = 'theme-gen-state-v1';
+  function saveState() {
+    try {
+      const obj = {
+        themeName,
+        generationStyle,
+        content,
+        jobId,
+        hasResult: !!resultOutline,
+        contentJobId,
+      };
+      if (typeof window !== 'undefined') localStorage.setItem(STATE_KEY, JSON.stringify(obj));
+    } catch {}
+  }
+  function loadState() {
+    try {
+      if (typeof window === 'undefined') return null;
+      const raw = localStorage.getItem(STATE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch { return null; }
+  }
+  useEffect(() => { saveState(); }, [themeName, generationStyle, content, jobId, resultOutline, contentJobId]);
+
+  // 统一订阅辅助
+  const subscribeOutline = (jid: string) => {
+    try {
+      const es = new EventSource(`/api/outline/stream?jobId=${encodeURIComponent(jid)}`);
+      evtSrcRef.current = es;
+      es.addEventListener('hello', (ev: MessageEvent) => {
+        try {
+          const data = JSON.parse(ev.data);
+          const snap = data?.snapshot || {};
+          if (snap?.stages) {
+            const stc = snap.stages.collect; const sto = snap.stages.outline;
+            if (stc) setStageCollect({ status: stc.status, detail: stc.detail, progress: stc.progress });
+            if (sto) setStageOutline({ status: sto.status, detail: sto.detail });
+          }
+          if (snap?.status && snap.status !== 'running') {
+            setIsGenerating(false);
+          } else {
+            setIsGenerating(true);
+          }
+        } catch {}
+      });
+      es.addEventListener('stage', (ev: MessageEvent) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data?.id === 'collect') {
+            setStageCollect({ status: data.status, detail: data.detail, progress: typeof data.progress === 'number' ? Math.max(0, Math.min(1, data.progress)) : undefined });
+          } else if (data?.id === 'outline') {
+            setStageOutline({ status: data.status, detail: data.detail });
+          }
+        } catch {}
+      });
+      es.addEventListener('log', (ev: MessageEvent) => {
+        const line = (() => { try { const obj = JSON.parse(ev.data); return obj?.line ?? String(ev.data); } catch { return String(ev.data); }})();
+        setLogs(prev => (prev.length > 500 ? prev.slice(prev.length - 500) : prev).concat([line]));
+      });
+      es.addEventListener('file', () => {});
+      es.addEventListener('end', async (ev: MessageEvent) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data?.status === 'success' && jid) {
+            const r = await fetch(`/api/outline/result?jobId=${encodeURIComponent(jid)}`, { cache: 'no-store' });
+            if (r.ok) setResultOutline(await r.json());
+          }
+        } catch {}
+        setIsGenerating(false);
+        try { es.close(); } catch {}
+        evtSrcRef.current = null;
+      });
+      es.onerror = () => {
+        setIsGenerating(false);
+        try { es.close(); } catch {}
+        evtSrcRef.current = null;
+      };
+    } catch {}
+  };
+  const subscribeContent = (jid: string) => {
+    try {
+      const es = new EventSource(`/api/content/stream?jobId=${encodeURIComponent(jid)}`);
+      evtContentRef.current = es;
+      es.addEventListener('hello', (ev: MessageEvent) => {
+        try {
+          const data = JSON.parse(ev.data);
+          const snap = data?.snapshot || {};
+          if (snap?.stages?.content) setContentStage({ status: snap.stages.content.status, detail: snap.stages.content.detail });
+          if (snap?.status && snap.status !== 'running') setIsContentGenerating(false); else setIsContentGenerating(true);
+        } catch {}
+      });
+      es.addEventListener('stage', (ev: MessageEvent) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data?.id === 'content') setContentStage({ status: data.status, detail: data.detail });
+        } catch {}
+      });
+      es.addEventListener('log', (ev: MessageEvent) => {
+        const line = (() => { try { const obj = JSON.parse(ev.data); return obj?.line ?? String(ev.data); } catch { return String(ev.data); }})();
+        setLogs(prev => (prev.length > 500 ? prev.slice(prev.length - 500) : prev).concat([line]));
+      });
+      es.addEventListener('file', () => {});
+      es.addEventListener('end', async (ev: MessageEvent) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data?.status === 'success' && jid) {
+            const r = await fetch(`/api/content/result?jobId=${encodeURIComponent(jid)}`, { cache: 'no-store' });
+            if (r.ok) setContentResult(await r.json());
+          }
+        } catch {}
+        setIsContentGenerating(false);
+        try { es.close(); } catch {}
+        evtContentRef.current = null;
+      });
+      es.onerror = () => {
+        setIsContentGenerating(false);
+        try { es.close(); } catch {}
+        evtContentRef.current = null;
+      };
+    } catch {}
+  };
+
+  // 刷新恢复：根据持久化的 jobId 重新订阅
+  useEffect(() => {
+    const st = loadState();
+    if (!st) return;
+    try {
+      if (typeof st.themeName === 'string') setThemeName(st.themeName);
+      if (st.generationStyle === 'principle' || st.generationStyle === 'preview') setGenerationStyle(st.generationStyle);
+      if (typeof st.content === 'string') setContent(st.content);
+    } catch {}
+    try {
+      if (st.jobId && !resultOutline) {
+        setJobId(st.jobId);
+        setIsGenerating(true);
+        subscribeOutline(st.jobId);
+      }
+    } catch {}
+    try {
+      if (st.contentJobId) {
+        setContentJobId(st.contentJobId);
+        setIsContentGenerating(true);
+        subscribeContent(st.contentJobId);
+      }
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const reactId = useId();
   const { gradientId, gradientClass } = useMemo(() => {
     const safe = reactId.replace(/[^a-zA-Z0-9_-]/g, "");
@@ -75,47 +232,7 @@ export function ThemeGenerator() {
       setJobId(jobId);
 
       // 订阅 SSE
-      const es = new EventSource(`/api/outline/stream?jobId=${encodeURIComponent(jobId)}`);
-      evtSrcRef.current = es;
-      es.addEventListener('stage', (ev: MessageEvent) => {
-        try {
-          const data = JSON.parse(ev.data);
-          if (data?.id === 'collect') {
-            setStageCollect({ status: data.status, detail: data.detail, progress: typeof data.progress === 'number' ? Math.max(0, Math.min(1, data.progress)) : undefined });
-          } else if (data?.id === 'outline') {
-            setStageOutline({ status: data.status, detail: data.detail });
-          }
-        } catch {}
-      });
-      es.addEventListener('log', (ev: MessageEvent) => {
-        const line = (() => {
-          try { const obj = JSON.parse(ev.data); return obj?.line ?? String(ev.data); } catch { return String(ev.data); }
-        })();
-        setLogs(prev => (prev.length > 500 ? prev.slice(prev.length - 500) : prev).concat([line]));
-      });
-      es.addEventListener('file', (ev: MessageEvent) => {
-        // 可选：展示 outPath/logPath
-      });
-      es.addEventListener('end', async (ev: MessageEvent) => {
-        try {
-          const data = JSON.parse(ev.data);
-          if (data?.status === 'success' && jobId) {
-            const r = await fetch(`/api/outline/result?jobId=${encodeURIComponent(jobId)}`, { cache: 'no-store' });
-            if (r.ok) {
-              const json = await r.json();
-              setResultOutline(json);
-            }
-          }
-        } catch {}
-        setIsGenerating(false);
-        try { es.close(); } catch {}
-        evtSrcRef.current = null;
-      });
-      es.onerror = () => {
-        setIsGenerating(false);
-        try { es.close(); } catch {}
-        evtSrcRef.current = null;
-      };
+      subscribeOutline(jobId);
     } catch (error) {
       console.error('生成主题失败:', error);
       setIsGenerating(false);
@@ -201,8 +318,8 @@ export function ThemeGenerator() {
             </div>
           )}
 
-          {/* 阶段3：结果预览（优先级更高，出现后不再显示阶段2内容） */}
-          {!isGenerating && !!resultOutline && (
+          {/* 阶段3：结果预览（若进入阶段4，则隐藏） */}
+          {!isGenerating && !!resultOutline && !isContentGenerating && !contentJobId && !contentResult && (
             <div className="space-y-3">
               <h4 className="font-medium text-sm leading-none">大纲已生成</h4>
               <div className="text-[11px] text-muted-foreground break-words">主题: {resultOutline?.reconstructed_outline?.meta?.subject || themeName}</div>
@@ -238,10 +355,54 @@ export function ThemeGenerator() {
               <div className="flex gap-2">
                 <Button
                   className="h-8 text-xs"
-                  onClick={() => {
-                    // TODO: 接入章节内容生成 API
-                    console.log('confirm-outline', resultOutline);
-                    setIsOpen(false);
+                  onClick={async () => {
+                    try {
+                      setIsContentGenerating(true);
+                      setContentStage({ status: 'running', detail: '启动脚本中…' });
+                      setContentResult(null);
+                      setLogs([]); // 清空日志，进入阶段4独立日志
+                      const res = await fetch('/api/content/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ refJobId: jobId }), // 默认全部章节
+                      });
+                      if (!res.ok) throw new Error(`启动内容生成失败: ${res.status}`);
+                      const { jobId: cJobId } = await res.json();
+                      setContentJobId(cJobId);
+                      const es = new EventSource(`/api/content/stream?jobId=${encodeURIComponent(cJobId)}`);
+                      evtContentRef.current = es;
+                      es.addEventListener('stage', (ev: MessageEvent) => {
+                        try {
+                          const data = JSON.parse(ev.data);
+                          if (data?.id === 'content') setContentStage({ status: data.status, detail: data.detail });
+                        } catch {}
+                      });
+                      es.addEventListener('log', (ev: MessageEvent) => {
+                        const line = (() => { try { const obj = JSON.parse(ev.data); return obj?.line ?? String(ev.data); } catch { return String(ev.data); }})();
+                        setLogs(prev => (prev.length > 500 ? prev.slice(prev.length - 500) : prev).concat([line]));
+                      });
+                      es.addEventListener('file', (ev: MessageEvent) => { /* 可选显示 reportPath/logPath */ });
+                      es.addEventListener('end', async (ev: MessageEvent) => {
+                        try {
+                          const data = JSON.parse(ev.data);
+                          if (data?.status === 'success' && cJobId) {
+                            const r = await fetch(`/api/content/result?jobId=${encodeURIComponent(cJobId)}`, { cache: 'no-store' });
+                            if (r.ok) setContentResult(await r.json());
+                          }
+                        } catch {}
+                        setIsContentGenerating(false);
+                        try { es.close(); } catch {}
+                        evtContentRef.current = null;
+                      });
+                      es.onerror = () => {
+                        setIsContentGenerating(false);
+                        try { es.close(); } catch {}
+                        evtContentRef.current = null;
+                      };
+                    } catch (e) {
+                      console.error(e);
+                      setIsContentGenerating(false);
+                    }
                   }}
                 >基于此大纲生成知识点</Button>
                 <Button
@@ -253,6 +414,10 @@ export function ThemeGenerator() {
                     setLogs([]);
                     setJobId(null);
                     setIsGenerating(false);
+                    setContentJobId(null);
+                    setIsContentGenerating(false);
+                    setContentStage({ status: 'pending' });
+                    setContentResult(null);
                   }}
                 >放弃并重新生成</Button>
               </div>
@@ -291,6 +456,81 @@ export function ThemeGenerator() {
                 <pre className="bg-muted/50 rounded p-2 max-h-48 overflow-auto text-[11px] leading-tight whitespace-pre-wrap">
 {logs.slice(-200).join('\n')}
                 </pre>
+              )}
+            </div>
+          )}
+
+          {/* 阶段4：内容生成进度（开始后独占显示） */}
+          {((isContentGenerating || contentJobId) && true) && (
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm leading-none">生成知识点（章节内容）</h4>
+              <div className="flex items-center gap-2 text-xs">
+                {(isContentGenerating && contentStage.status !== 'error') && (<Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />)}
+                <div>
+                  <div>状态：{contentStage.status === 'completed' ? '完成' : (contentStage.status === 'error' ? '出错/取消' : '进行中')}</div>
+                  {!!contentStage.detail && <div className="text-[11px] text-muted-foreground mt-0.5">{contentStage.detail}</div>}
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-muted-foreground">日志</div>
+                <div className="flex items-center gap-2">
+                  {(isContentGenerating && contentJobId) && (
+                    <Button
+                      variant="destructive"
+                      className="h-7 px-2 text-xs"
+                      onClick={async () => {
+                        try {
+                          await fetch(`/api/content/cancel?jobId=${encodeURIComponent(contentJobId!)}`, { method: 'POST' });
+                        } catch {}
+                        setIsContentGenerating(false);
+                        try { evtContentRef.current?.close(); } catch {}
+                        evtContentRef.current = null;
+                      }}
+                    >中止</Button>
+                  )}
+                  <Button variant="ghost" className="h-7 px-2 text-xs" onClick={() => setShowLogs(v => !v)}>{showLogs ? '收起' : '展开'}</Button>
+                </div>
+              </div>
+              {showLogs && (
+                <pre className="bg-muted/50 rounded p-2 max-h-56 overflow-auto text-[11px] leading-tight whitespace-pre-wrap">
+{logs.slice(-200).join('\n')}
+                </pre>
+              )}
+              {!isContentGenerating && contentResult && (
+                <div className="space-y-2">
+                  <div className="text-xs">知识点生成完成</div>
+                  <div className="text-[11px] text-muted-foreground break-words">报告: {contentResult?.reportPath || '—'}</div>
+                  {Array.isArray(contentResult?.publishedFiles) && contentResult.publishedFiles.length > 0 && (
+                    <div className="text-[11px] text-muted-foreground">共发布 {contentResult.publishedFiles.length} 个内容文件</div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      className="h-7 px-2 text-xs"
+                      onClick={() => {
+                        try {
+                          const pub: string | undefined = contentResult?.publishDir;
+                          const getSlug = () => {
+                            if (pub) {
+                              const parts = String(pub).split(/[\\/]+/);
+                              const ix = parts.lastIndexOf('content');
+                              if (ix >= 0 && ix + 1 < parts.length) return parts[ix + 1];
+                            }
+                            return (
+                              resultOutline?.reconstructed_outline?.meta?.topic_slug ||
+                              resultOutline?.subject_slug || ''
+                            );
+                          };
+                          const slug = getSlug();
+                          if (slug) {
+                            loadPath(slug);
+                            setIsOpen(false);
+                          }
+                        } catch { setIsOpen(false); }
+                      }}
+                    >打开学习路径</Button>
+                    <Button variant="outline" className="h-7 px-2 text-xs" onClick={() => setIsOpen(false)}>关闭</Button>
+                  </div>
+                </div>
               )}
             </div>
           )}

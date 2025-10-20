@@ -1,0 +1,155 @@
+import { spawn } from 'child_process';
+import path from 'path';
+import fs from 'fs/promises';
+import { broadcast, createJob, finishJob, JobRecord, updateStage } from './jobManager';
+
+export interface GenerateContentParams {
+  inputPath: string; // integrated JSON path
+  selectedChapters?: string; // e.g., "1,3-4"
+  debug?: boolean;
+}
+
+function repoRoot(): string {
+  // Next app cwd is web-learner; repoRoot is parent
+  return path.resolve(process.cwd(), '..');
+}
+
+function slugify(text: string): string {
+  const s = (text || '').trim().toLowerCase()
+    .replace(/[\u3000\s/]+/g, '-')
+    .replace(/[^a-z0-9\-_.]+/g, '')
+    .replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+  return s || 'topic';
+}
+
+async function deriveTopicFromIntegrated(integratedPath: string): Promise<{ subject?: string, topicSlug: string }>
+{
+  try {
+    const text = await fs.readFile(integratedPath, { encoding: 'utf-8' });
+    const json = JSON.parse(text);
+    const subject: string | undefined = json?.subject || json?.reconstructed_outline?.meta?.subject;
+    const topicSlug = (
+      (json?.reconstructed_outline?.meta?.topic_slug && String(json.reconstructed_outline.meta.topic_slug)) ||
+      (json?.subject_slug && String(json.subject_slug)) ||
+      slugify(String(subject || ''))
+    );
+    return { subject, topicSlug };
+  } catch {
+    return { subject: undefined, topicSlug: 'topic' };
+  }
+}
+
+function parseLine(job: JobRecord, line: string, counters: { saved: number }): void {
+  try {
+    // 选择章节信息
+    const mSel = line.match(/选择章节\s*:\s*\[([^\]]*)\]/);
+    if (mSel) {
+      const list = mSel[1].split(',').map(s => s.trim()).filter(Boolean);
+      updateStage(job, 'content', { status: 'running', detail: `选择章节: ${list.length} 个` });
+      return;
+    }
+
+    // 文件保存
+    if (/已保存\s*:\s*/.test(line) || /大纲已保存\s*:\s*/.test(line)) {
+      counters.saved += 1;
+      updateStage(job, 'content', { status: 'running', detail: `已保存 ${counters.saved} 个文件` });
+      return;
+    }
+
+    // 报告路径（作为输出路径）
+    const mReport = line.match(/报告已写出\s*:\s*(.+)$/);
+    if (mReport) {
+      job.outputPath = mReport[1].trim();
+      // 试着推导 log 与发布目录并广播
+      try {
+        const base = path.basename(job.outputPath || ''); // pipeline_report_<slug>.md
+        const m = base.match(/^pipeline_report_(.+)\.md$/);
+        if (m) {
+          const slug = m[1];
+          const publishDir = path.join(repoRoot(), 'web-learner', 'public', 'content', slug);
+          // 约定调试日志
+          const logPath = path.join(repoRoot(), 'output', slug, 'log.txt');
+          job.logPath = logPath;
+          broadcast(job, 'file', { reportPath: job.outputPath, publishDir, logPath });
+        } else {
+          broadcast(job, 'file', { reportPath: job.outputPath });
+        }
+      } catch {}
+      return;
+    }
+
+    // 完成标记
+    if (/✅\s*完成/.test(line) || /完成。无报告可显示。/.test(line)) {
+      updateStage(job, 'content', { status: 'completed', progress: 1, detail: '完成' });
+      return;
+    }
+  } catch {}
+}
+
+export async function startChapters(params: GenerateContentParams) {
+  const { inputPath } = params;
+  const meta = await deriveTopicFromIntegrated(inputPath);
+  const job = createJob('content', {
+    subject: meta.subject,
+  });
+
+  const py = process.env.PYTHON || 'python';
+  const script = path.join(repoRoot(), 'scripts', 'pipelines', 'generation', 'generate_chapters_from_integrated_standalone.py');
+
+  const args: string[] = [
+    '-u',
+    script,
+    '--input', inputPath,
+    '--config', path.join(repoRoot(), 'config.json'),
+  ];
+  if (params.selectedChapters && params.selectedChapters.trim()) {
+    args.push('--selected-chapters', params.selectedChapters.trim());
+  }
+  if (params.debug) args.push('--debug');
+
+  const child = spawn(py, args, { cwd: repoRoot(), env: process.env });
+  job.pid = child.pid;
+
+  // 初始阶段
+  updateStage(job, 'content', { status: 'running', detail: '启动脚本中…' });
+  broadcast(job, 'log', { line: `[orchestrator] spawn: ${py} ${args.join(' ')}` });
+  broadcast(job, 'log', { line: `[orchestrator] cwd: ${repoRoot()}` });
+
+  child.on('spawn', () => {
+    broadcast(job, 'log', { line: `[orchestrator] process started (pid=${child.pid})` });
+    updateStage(job, 'content', { status: 'running', detail: '准备生成章节内容' });
+  });
+
+  const counters = { saved: 0 };
+  const onData = (buf: Buffer) => {
+    const text = buf.toString('utf-8');
+    const lines = text.split(/\r?\n/);
+    for (const line of lines) {
+      if (!line) continue;
+      broadcast(job, 'log', { line });
+      parseLine(job, line, counters);
+    }
+  };
+  child.stdout.on('data', onData);
+  child.stderr.on('data', onData);
+
+  child.on('close', (code) => {
+    if (code === 0) {
+      finishJob(job.id, 'success');
+      broadcast(job, 'end', { status: 'success', outputPath: job.outputPath, logPath: job.logPath });
+    } else {
+      finishJob(job.id, 'error');
+      updateStage(job, 'content', { status: 'error', detail: `进程退出码 ${code}` });
+      broadcast(job, 'end', { status: 'error', message: `进程退出码 ${code}` });
+    }
+  });
+  child.on('error', (err) => {
+    finishJob(job.id, 'error');
+    updateStage(job, 'content', { status: 'error', detail: '进程启动失败' });
+    broadcast(job, 'log', { line: `[orchestrator] spawn error: ${String(err?.message || err)}` });
+    broadcast(job, 'end', { status: 'error', message: String(err?.message || err) });
+  });
+
+  return job;
+}
+
