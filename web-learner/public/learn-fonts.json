@@ -1,0 +1,22 @@
+[
+  {
+    "id": "alibaba-puhui",
+    "displayName": "阿里巴巴普惠体",
+    "fontFamily": "Alibaba PuHuiTi"
+  },
+  {
+    "id": "smiley-sans",
+    "displayName": "得意黑",
+    "fontFamily": "Smiley Sans"
+  },
+  {
+    "id": "system-kaiti",
+    "displayName": "楷体",
+    "fontFamily": "Kaiti SC, KaiTi"
+  },
+  {
+    "id": "system-songti",
+    "displayName": "宋体",
+    "fontFamily": "Songti SC, SimSun"
+  }
+]

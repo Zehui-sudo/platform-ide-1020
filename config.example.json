@@ -1,0 +1,11 @@
+{
+  "api_provider": "deepseek",
+  "deepseek_api_key": "sk-8102e40a3ccb42b9a40ea6ab8467530b",
+  "deepseek_base_url": "https://api.deepseek.com",
+  "model": "deepseek-reasoner",
+  "temperature": 0.6,
+  "max_tokens": 4096,
+  "retry_times": 3,
+  "retry_delay": 10,
+  "max_parallel_requests": 8
+}

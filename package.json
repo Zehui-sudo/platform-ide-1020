@@ -1,0 +1,27 @@
+{
+  "name": "@platform-ide/root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Platform IDE - 在线学习平台与VSCode插件集成项目",
+  "scripts": {
+    "dev": "pnpm run --parallel dev:web dev:ext",
+    "dev:web": "pnpm --filter @platform-ide/web-learner dev",
+    "dev:ext": "pnpm --filter @platform-ide/learn-linker watch",
+    "build": "pnpm run --recursive build",
+    "build:web": "pnpm --filter @platform-ide/web-learner build",
+    "build:ext": "pnpm --filter @platform-ide/learn-linker package",
+    "lint": "pnpm run --recursive lint",
+    "test": "pnpm run --recursive test",
+    "clean": "pnpm run --recursive clean && rm -rf node_modules",
+    "clean:modules": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.9"
+}

@@ -1,0 +1,243 @@
+/* Prism VSCode Dark Theme */
+
+/* 基础令牌样式 */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+    color: #6A9955;
+    font-style: italic;
+}
+
+.token.punctuation {
+    color: #D4D4D4;
+}
+
+.token.property,
+.token.tag,
+.token.constant,
+.token.symbol,
+.token.deleted {
+    color: #9CDCFE;
+}
+
+.token.boolean,
+.token.number {
+    color: #B5CEA8;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+    color: #CE9178;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string,
+.token.variable {
+    color: #D4D4D4;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.function,
+.token.class-name {
+    color: #DCDCAA;
+}
+
+.token.keyword {
+    color: #569CD6;
+}
+
+.token.regex,
+.token.important {
+    color: #D16969;
+}
+
+.token.important,
+.token.bold {
+    font-weight: bold;
+}
+
+.token.italic {
+    font-style: italic;
+}
+
+.token.entity {
+    cursor: help;
+}
+
+/* 特定语言样式 */
+.language-javascript .token.keyword,
+.language-typescript .token.keyword,
+.language-jsx .token.keyword,
+.language-tsx .token.keyword {
+    color: #569CD6;
+}
+
+.language-javascript .token.function,
+.language-typescript .token.function,
+.language-jsx .token.function,
+.language-tsx .token.function {
+    color: #DCDCAA;
+}
+
+.language-javascript .token.class-name,
+.language-typescript .token.class-name,
+.language-jsx .token.class-name,
+.language-tsx .token.class-name {
+    color: #4EC9B0;
+}
+
+.language-javascript .token.parameter,
+.language-typescript .token.parameter {
+    color: #9CDCFE;
+}
+
+.language-css .token.selector {
+    color: #D7BA7D;
+}
+
+.language-css .token.property {
+    color: #9CDCFE;
+}
+
+.language-css .token.important {
+    color: #569CD6;
+}
+
+.language-html .token.tag {
+    color: #569CD6;
+}
+
+.language-html .token.attr-name {
+    color: #9CDCFE;
+}
+
+.language-html .token.attr-value {
+    color: #CE9178;
+}
+
+.language-python .token.decorator {
+    color: #DCDCAA;
+}
+
+.language-python .token.builtin {
+    color: #4EC9B0;
+}
+
+.language-java .token.class-name,
+.language-csharp .token.class-name,
+.language-cpp .token.class-name {
+    color: #4EC9B0;
+}
+
+.language-go .token.builtin {
+    color: #4EC9B0;
+}
+
+.language-rust .token.macro {
+    color: #DCDCAA;
+}
+
+.language-rust .token.lifetime {
+    color: #569CD6;
+}
+
+.language-bash .token.function {
+    color: #DCDCAA;
+}
+
+.language-bash .token.builtin {
+    color: #569CD6;
+}
+
+.language-json .token.property {
+    color: #9CDCFE;
+}
+
+.language-yaml .token.key {
+    color: #9CDCFE;
+}
+
+.language-markdown .token.title {
+    color: #569CD6;
+    font-weight: bold;
+}
+
+.language-markdown .token.code {
+    color: #CE9178;
+}
+
+.language-markdown .token.list {
+    color: #569CD6;
+}
+
+.language-markdown .token.url {
+    color: #4EC9B0;
+    text-decoration: underline;
+}
+
+/* 行号样式（如果使用） */
+.line-numbers .line-numbers-rows {
+    border-right: 1px solid #3B4048;
+}
+
+.line-numbers-rows > span {
+    color: #858585;
+}
+
+/* 选中高亮 */
+.token::-moz-selection,
+.token ::-moz-selection,
+code::-moz-selection,
+code ::-moz-selection {
+    background: #264F78;
+}
+
+.token::selection,
+.token ::selection,
+code::selection,
+code ::selection {
+    background: #264F78;
+}
+
+/* 匹配括号 */
+.token.punctuation.brace-hover,
+.token.punctuation.brace-selected {
+    outline: 1px solid #5a5a5a;
+}
+
+/* 内联代码 */
+:not(pre) > code {
+    padding: .1em .3em;
+    border-radius: .3em;
+    white-space: normal;
+    background: var(--vscode-textCodeBlock-background);
+    color: var(--vscode-textPreformat-foreground);
+}
+
+/* 代码块滚动条 */
+pre::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+pre::-webkit-scrollbar-track {
+    background: var(--vscode-scrollbarSlider-background);
+}
+
+pre::-webkit-scrollbar-thumb {
+    background: var(--vscode-scrollbarSlider-hoverBackground);
+    border-radius: 5px;
+}
+
+pre::-webkit-scrollbar-thumb:hover {
+    background: var(--vscode-scrollbarSlider-activeBackground);
+}

@@ -1,0 +1,61 @@
+/* learn-fonts.css generated: 2025-10-17T14:25:44.106Z */
+
+/* alibaba-puhui font.css */
+@font-face {
+  font-family: 'Alibaba PuHuiTi';
+  src: url('/fonts/alibaba-puhui/AlibabaPuHuiTi-3-55-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Alibaba PuHuiTi';
+  src: url('/fonts/alibaba-puhui/AlibabaPuHuiTi-3-85-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+
+
+/* helper class */
+.app-font-alibaba-puhui {
+  font-family: 'Alibaba PuHuiTi', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', PingFang SC, 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Helvetica Neue', Arial, sans-serif;
+}
+
+
+/* smiley-sans auto-generated */
+@font-face {
+  font-family: 'Smiley Sans';
+  src: url('/fonts/smiley-sans/SmileySans-Oblique.otf.woff2') format('woff2');
+  font-weight: 400;
+  font-style: oblique;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Smiley Sans';
+  src: url('/fonts/smiley-sans/SmileySans-Oblique.ttf.woff2') format('woff2');
+  font-weight: 400;
+  font-style: oblique;
+  font-display: swap;
+}
+
+
+/* helper class */
+.app-font-smiley-sans {
+  font-family: 'Smiley Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', PingFang SC, 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Helvetica Neue', Arial, sans-serif;
+}
+
+
+/* helper class */
+.app-font-system-kaiti {
+  font-family: Kaiti SC, KaiTi, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', PingFang SC, 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Helvetica Neue', Arial, sans-serif;
+}
+
+
+/* helper class */
+.app-font-system-songti {
+  font-family: Songti SC, SimSun, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', PingFang SC, 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Helvetica Neue', Arial, sans-serif;
+}

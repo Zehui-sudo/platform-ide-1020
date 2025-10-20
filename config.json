@@ -1,0 +1,72 @@
+{
+  "llms": {
+    "deepseek-chat": {
+      "provider": "deepseek",
+      "base_url": "https://api.deepseek.com",
+      "api_key": "sk-8102e40a3ccb42b9a40ea6ab8467530b",
+      "model": "deepseek-chat",
+      "temperature": 0.6
+    },
+    "deepseek-reasoner": {
+      "provider": "deepseek",
+      "base_url": "https://api.deepseek.com",
+      "api_key": "sk-8102e40a3ccb42b9a40ea6ab8467530b",
+      "model": "deepseek-reasoner",
+      "temperature": 0.6
+    },
+    "gemini-2.5-pro": {
+      "provider": "gemini",
+      "api_key": "AIzaSyBamchKPVxGm3QgFjDeIzI3FplECBqIRGs",
+      "model": "gemini-2.5-pro",
+      "temperature": 0.6
+    },
+    "gemini-2.5-flash": {
+      "provider": "gemini",
+      "api_key": "AIzaSyBamchKPVxGm3QgFjDeIzI3FplECBqIRGs",
+      "model": "gemini-2.5-flash",
+      "temperature": 0.6
+    },
+    "qwen-3-max": {
+      "provider": "openai_compat",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key": "sk-0824c768fbcf4755a5d491f611805b25",
+      "model": "qwen3-max",
+      "temperature": 0.6
+    },
+    "kimi-k2": {
+      "provider": "openai_compat",
+      "base_url": "hhttps://api.moonshot.cn/v1",
+      "api_key": "sk-sr3EegQOdRPF05YsO3W88JxHx4mX3bxC9qsp3M9Md1k2G8xk",
+      "model": "kimi-k2-turbo-preview",
+      "temperature": 0.6
+    },
+    "glm-4.6": {
+      "provider": "openai_compat",
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "api_key": "d31c9bd813374660a2d8bc23b9940854.pAjNynqz5yYZSpFn",
+      "model": "glm-4.6",
+      "temperature": 0.6
+    }
+  },
+  "node_llm": {
+    "default": "gemini-2.5-flash",
+    "generate_slug": "gemini-2.5-flash",
+    "generate_outline.stage1": "gemini-2.5-pro",
+    "generate_outline.stage2": "gemini-2.5-pro",
+    "generate_outline.stage3": "gemini-2.5-pro",
+    "generate_outline.review": "gemini-2.5-flash",
+    "generate_outline": "gemini-2.5-pro",
+    "generate_prompt_template": "gemini-2.5-pro",
+    "select_prompt_template": "gemini-2.5-pro",
+    "generate_and_review_by_chapter.generate": "gemini-2.5-pro",
+    "generate_and_review_by_chapter.review": "gemini-2.5-flash",
+    "generate_and_review_parallel.generate": "qwen-3-max",
+    "generate_and_review_parallel.review": "gemini-2.5-pro",
+    "propose_and_apply_fixes.propose": "gemini-2.5-pro"
+  },
+  "max_tokens": 32768,
+  "retry_times": 3,
+  "retry_delay": 10,
+  "max_parallel_requests": 100,
+  "auto_apply_mode": "safe"
+}

@@ -1,0 +1,4 @@
+packages:
+  - 'web-learner'
+  - 'learn-linker'
+  - 'packages/*'

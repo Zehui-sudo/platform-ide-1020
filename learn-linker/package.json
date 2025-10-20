@@ -1,0 +1,175 @@
+{
+  "name": "@platform-ide/learn-linker",
+  "displayName": "learn-linker",
+  "description": "link platform and ide",
+  "version": "0.0.1",
+  "publisher": "platform-ide",
+  "engines": {
+    "vscode": "^1.103.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:learn-linker.helloWorld",
+    "onCommand:learn-linker.explainCode",
+    "onCommand:learn-linker.quickExplain",
+    "onCommand:learn-linker.testPeekView",
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescriptreact",
+    "onLanguage:python",
+    "onLanguage:java",
+    "onLanguage:cpp",
+    "onLanguage:c",
+    "onLanguage:go",
+    "onLanguage:rust"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "learn-linker.helloWorld",
+        "title": "Hello World"
+      },
+      {
+        "command": "learn-linker.explainCode",
+        "title": "获取AI代码解释"
+      },
+      {
+        "command": "learn-linker.quickExplain",
+        "title": "快速解释选中代码"
+      },
+      {
+        "command": "learn-linker.testPeekView",
+        "title": "测试 PeekView 功能"
+      },
+      {
+        "command": "learn-linker.configureApiKey",
+        "title": "配置 AI API Key"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "learn-linker.quickExplain",
+        "key": "ctrl+shift+k",
+        "mac": "cmd+shift+k",
+        "when": "editorHasSelection"
+      }
+    ],
+    "configuration": {
+      "title": "Learn Linker",
+      "properties": {
+        "learnLinker.enableCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用 CodeLens 提示"
+        },
+        "learnLinker.aiProvider": {
+          "type": "string",
+          "default": "mock",
+          "enum": [
+            "mock",
+            "deepseek"
+          ],
+          "enumDescriptions": [
+            "使用模拟 AI 服务（无需配置）",
+            "使用 DeepSeek API（需要 API Key）"
+          ],
+          "description": "选择 AI 服务提供商"
+        },
+        "learnLinker.deepseekApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "DeepSeek API Key (建议使用命令设置以安全存储)",
+          "markdownDescription": "DeepSeek API Key。获取地址：[https://platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys)"
+        },
+        "learnLinker.aiModel": {
+          "type": "string",
+          "default": "deepseek-chat",
+          "enum": [
+            "deepseek-chat",
+            "deepseek-reasoner"
+          ],
+          "enumDescriptions": [
+            "快速响应，适合代码解释（推荐）",
+            "深度推理，适合复杂问题"
+          ],
+          "description": "AI 模型选择"
+        },
+        "learnLinker.maxTokens": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 500,
+          "maximum": 4000,
+          "description": "AI 响应的最大 token 数"
+        },
+        "learnLinker.temperature": {
+          "type": "number",
+          "default": 0.7,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "AI 响应的创造性（0-1，越高越有创造性）"
+        },
+        "learnLinker.deepseekApiEndpoint": {
+          "type": "string",
+          "default": "",
+          "description": "自定义 DeepSeek API 端点（可选）"
+        },
+        "learnLinker.enableContextCollection": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用代码上下文收集以提升解释质量"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run setup-wasm && pnpm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
+    "setup-wasm": "node ./scripts/prepare-wasm.js",
+    "postinstall": "pnpm run setup-wasm",
+    "lint": "eslint src",
+    "test": "vscode-test",
+    "clean": "rm -rf dist out node_modules"
+  },
+  "dependencies": {
+    "@types/prismjs": "^1.26.5",
+    "katex": "^0.16.9",
+    "prism-themes": "^1.9.0",
+    "prismjs": "^1.30.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^9.0.0",
+    "rehype-katex": "^7.0.0",
+    "remark-gfm": "^4.0.0",
+    "remark-math": "^6.0.0",
+    "web-tree-sitter": "^0.25.8"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/vscode": "^1.103.0",
+    "@typescript-eslint/eslint-plugin": "^8.39.0",
+    "@typescript-eslint/parser": "^8.39.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "css-loader": "^6.8.1",
+    "eslint": "^9.32.0",
+    "process": "^0.11.10",
+    "style-loader": "^3.3.3",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.9.2",
+    "webpack": "^5.101.0",
+    "webpack-cli": "^6.0.1"
+  }
+}
