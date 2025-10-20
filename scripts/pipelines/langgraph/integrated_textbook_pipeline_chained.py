@@ -16,14 +16,16 @@
 
 运行示例
   python scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
-    --subject "量子力学" \
+    --subject "Web 媒体技术" \
     --top-n 3 \
-    --print-prompt --stream
+    --print-prompt --stream \
     --gemini-llm-key gemini-2.5-pro \
     --kimi-llm-key kimi-k2 \
     --reconstruct-llm-key gemini-2.5-pro \
     --classifier-llm-key gemini-2.5-flash \
-    
+    --learning-style principles \
+    --expected-content "不需要介绍过多的计算机网络原理的内容，更关心现在主流流媒体平台（如 twitter、YouTube）如何进行视频分发。如何使用chrome的devtools找到视频源下载" \
+    --log
 """
 
 from __future__ import annotations
@@ -84,6 +86,41 @@ def _import_module_from_path(name: str, path: Path):
     return module
 
 
+class _Tee:
+    """简单的终端输出 Tee：同时写入原有流与日志文件。
+
+    用于将所有 print/logging 输出镜像到 output 下的 .log 文件。
+    """
+
+    def __init__(self, *streams):
+        self._streams = [s for s in streams if s is not None]
+
+    def write(self, data: str) -> int:  # type: ignore[override]
+        total = 0
+        for s in self._streams:
+            try:
+                cnt = s.write(data)
+                total = max(total, cnt if isinstance(cnt, int) else len(data))
+            except Exception:
+                # 忽略写入异常，避免影响主流程
+                pass
+        self.flush()
+        return total or len(data)
+
+    def flush(self) -> None:  # type: ignore[override]
+        for s in self._streams:
+            try:
+                s.flush()
+            except Exception:
+                pass
+
+    def isatty(self) -> bool:  # 兼容性
+        try:
+            return bool(getattr(self._streams[0], "isatty", lambda: False)())
+        except Exception:
+            return False
+
+
 # -----------------------------
 # 阶段一：复用 TOC 流水线（LangGraph）
 # -----------------------------
@@ -95,6 +132,8 @@ def run_toc_pipeline(
     cfg: Dict[str, Any],
     gemini_llm_key: Optional[str],
     kimi_llm_key: Optional[str],
+    expected_content: Optional[str] = None,
+    print_prompt: bool = False,
 ) -> Dict[str, Any]:
     """调用 textbook_toc_pipeline_langgraph 的图，返回 {subject, subject_slug, recommendations, tocs}。"""
     toc_path = (
@@ -113,6 +152,8 @@ def run_toc_pipeline(
         "max_parallel": max(1, int(max_parallel)),
         "gemini": gem_cfg,
         "kimi": kimi_cfg,
+        "expected_content": (expected_content or "").strip(),
+        "print_prompt": bool(print_prompt),
     }
     logging.getLogger(__name__).info(
         "[1/2] 运行 TOC 流水线 … subject=%s top_n=%d max_parallel=%d",
@@ -124,6 +165,7 @@ def run_toc_pipeline(
     return {
         "subject": subject,
         "subject_slug": final_state.get("subject_slug") or _slugify(subject, "subject"),
+        "expected_content": init_state.get("expected_content", ""),
         "recommendations": final_state.get("recommendations", []),
         "tocs": final_state.get("tocs", []),
     }
@@ -141,6 +183,8 @@ def run_reconstruct(
     reconstruct_llm_key: Optional[str],
     classifier_llm_key: Optional[str],
     force_subject_type: Optional[str],
+    learning_style: Optional[str],
+    expected_content: Optional[str],
     print_prompt: bool,
     stream: bool,
     max_tokens: Optional[int],
@@ -183,9 +227,19 @@ def run_reconstruct(
             raise SystemExit(f"[错误] 主题分类失败: {subject_type}")
     print(f"[信息] 主题分类结果: {subject} → {subject_type}", file=sys.stderr)
 
-    # 组装 Prompt（按类型路由）
+    # 组装 Prompt（按类型 + 学习风格路由）
     materials_obj = {"subject": subject, "materials": items}
-    prompt = recon_mod.build_prompt(subject, materials_obj, subject_type)
+    try:
+        prompt = recon_mod.build_prompt(
+            subject,
+            materials_obj,
+            subject_type,
+            learning_style=learning_style,
+            expected_content=(expected_content or "").strip() or None,
+        )
+    except TypeError:
+        # 兼容旧版函数签名（未接受新增参数）
+        prompt = recon_mod.build_prompt(subject, materials_obj, subject_type)
     if print_prompt:
         print("========== DEBUG: Prompt Begin ==========", file=sys.stderr)
         print(prompt, file=sys.stderr)
@@ -223,6 +277,10 @@ def run_reconstruct(
             meta.setdefault("subject_type", subject_type)
             # 将 slug 传递给下游，便于统一命名
             meta.setdefault("topic_slug", subject_slug or _slugify(subject, "subject"))
+            if learning_style:
+                meta.setdefault("learning_style", learning_style)
+            if expected_content is not None:
+                meta.setdefault("expected_content", (expected_content or "").strip())
             output_obj["meta"] = meta
     except Exception:
         pass
@@ -244,21 +302,55 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--reconstruct-llm-key", type=str, default=None, help="config.json.llms 中重构阶段使用的 LLM key")
     p.add_argument("--classifier-llm-key", type=str, default=None, help="用于主题分类的 LLM 键名（默认 gemini-2.5-flash 如存在）")
     p.add_argument("--subject-type", choices=["theory", "tool"], default=None, help="手工指定主题类型，跳过自动分类")
-    p.add_argument("--max-tokens", type=int, default=None, help="重构阶段最大 tokens，默认无限制")
+    p.add_argument("--learning-style", required=True, help="学习风格（必选）：principles | deep_preview | 原理学习 | 深度预习（仅理论类生效）")
+    p.add_argument("--expected-content", type=str, default=None, help="学习者期望（可选，追加于输入材料之后）")
+    p.add_argument("--max-tokens", type=int, default=32768, help="重构阶段最大 tokens，默认无限制")
     p.add_argument("--print-prompt", action="store_true", help="在终端输出发送给重构 LLM 的完整 Prompt 以便调试")
     p.add_argument("--stream", action="store_true", help="启用流式输出，在控制台实时显示模型响应")
     p.add_argument("--config", default=str(CONFIG_PATH), help="配置文件路径（默认项目根 config.json）")
     p.add_argument("--out", type=str, default=None, help="综合输出 JSON 文件路径，可选")
+    p.add_argument("--log", action="store_true", help="将终端输出镜像到 output/integrated_pipeline 下的 .log 文件")
+    p.add_argument("--debug", action="store_true", help="等同 --log，并将日志级别提升为 DEBUG")
     args = p.parse_args(argv)
 
+    # 计算时间戳与 slug，用于默认输出文件命名（与日志配对）
+    ts = datetime.now().strftime('%Y%m%d-%H%M%S')
+    pre_slug = _slugify(args.subject, "subject")
+    # 若开启日志，将终端输出镜像到日志文件
+    log_fp = None
+    _orig_stdout, _orig_stderr = sys.stdout, sys.stderr
+    if args.log or args.debug:
+        pre_out_dir = BASE_DIR / "output" / "integrated_pipeline"
+        pre_out_dir.mkdir(parents=True, exist_ok=True)
+        log_path = pre_out_dir / f"{pre_slug}-integrated-{ts}.log"
+        log_fp = open(log_path, "w", encoding="utf-8")
+        sys.stdout = _Tee(sys.stdout, log_fp)
+        sys.stderr = _Tee(sys.stderr, log_fp)
+
+    # 初始化 logging（其输出写入 stderr；若启用 Tee 即被镜像到文件）
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG if args.debug else logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
     logger = logging.getLogger(__name__)
 
     cfg = _load_config(args.config)
+
+    # 规范化/校验学习风格
+    def _normalize_style(s: Optional[str]) -> str:
+        val = (s or "").strip().lower()
+        mapping = {
+            "principles": "principles",
+            "原理学习": "principles",
+            "deep_preview": "deep_preview",
+            "深度预习": "deep_preview",
+        }
+        return mapping.get(val, mapping.get(s or "", ""))
+
+    norm_style = _normalize_style(args.learning_style)
+    if norm_style not in ("principles", "deep_preview"):
+        raise SystemExit("[错误] --learning-style 必须为 principles/deep_preview 或 对应中文：原理学习/深度预习")
 
     # 阶段一：TOC
     stage1 = run_toc_pipeline(
@@ -268,6 +360,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         cfg=cfg,
         gemini_llm_key=args.gemini_llm_key,
         kimi_llm_key=args.kimi_llm_key,
+        expected_content=(args.expected_content or "").strip() if hasattr(args, 'expected_content') else None,
+        print_prompt=bool(args.print_prompt),
     )
 
     # 阶段二：重构
@@ -279,6 +373,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         reconstruct_llm_key=args.reconstruct_llm_key,
         classifier_llm_key=args.classifier_llm_key,
         force_subject_type=args.subject_type,
+        learning_style=norm_style,
+        expected_content=args.expected_content,
         print_prompt=bool(args.print_prompt),
         stream=bool(args.stream),
         max_tokens=args.max_tokens,
@@ -289,6 +385,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "subject": stage1["subject"],
         "subject_slug": stage1.get("subject_slug") or _slugify(args.subject, "subject"),
         "top_n": max(1, int(args.top_n)),
+        "expected_content": stage1.get("expected_content", (args.expected_content or "")),
         "recommendations": stage1.get("recommendations", []),
         "tocs": stage1.get("tocs", []),
         "reconstructed_outline": reconstructed,
@@ -302,7 +399,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         out_dir = BASE_DIR / "output" / "integrated_pipeline"
         out_dir.mkdir(parents=True, exist_ok=True)
         slug = out_obj.get("subject_slug") or _slugify(args.subject, "subject")
-        out_path = out_dir / f"{slug}-integrated-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+        # 复用启动时刻的时间戳，便于与 .log 文件配对
+        out_path = out_dir / f"{slug}-integrated-{ts}.json"
 
     out_path.write_text(json.dumps(out_obj, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -319,6 +417,22 @@ def main(argv: Optional[List[str]] = None) -> int:
         logger.info("大纲重构: 成功")
     else:
         logger.warning("大纲重构: 失败")
+
+    # 收尾：还原终端并关闭日志文件（仅在启用日志时）
+    if log_fp is not None:
+        try:
+            sys.stdout.flush(); sys.stderr.flush()
+        except Exception:
+            pass
+        try:
+            sys.stdout = _orig_stdout
+            sys.stderr = _orig_stderr
+        except Exception:
+            pass
+        try:
+            log_fp.flush(); log_fp.close()
+        except Exception:
+            pass
 
     return 0
 

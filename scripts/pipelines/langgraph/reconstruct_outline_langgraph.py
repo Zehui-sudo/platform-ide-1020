@@ -13,6 +13,8 @@
   python scripts/pipelines/langgraph/reconstruct_outline_langgraph.py \
     --input output/textbook_tocs/quantum-mechanics-20251016-152638.json \
     --llm-key gemini-2.5-pro \
+    --learning-style principles \
+    --expected-content "我希望在学习完之后能让我知道量子计算机的运作原理和为什么有显著的速度优势" \
     --print-prompt \
     --stream
 
@@ -395,10 +397,10 @@ Classify the following subject. Respond with a single word: `theory` or `tool`.
 PROMPT_INSTRUCTION_THEORIES = r"""
 你是一位顶尖的课程设计师和该领域的专家。你的核心任务是基于以下提供的三份世界顶级教材的目录，为**本科大三学生**设计一份全面而深入的入门课程大纲。
 
-**核心目标：**
+**【核心目标】**
 新大纲旨在帮助学习者构建一个**“T型知识结构”**。他们不仅要掌握**[subject]**领域从问题到解决方案的**核心叙事主线（T的横向）**，还必须深入理解每个关键节点上的**核心模型、算法或实现机制（T的纵向）**。学完后，他们应具备分析复杂问题、选择合适模型、并为后续项目实战打下坚实基础的能力。
 
-**具体要求如下：**
+**【原则要求】**
 
 1.  **原则一：构建‘T型知识’，兼顾宏观叙事与微观深度**：
     *   **宏观叙事（横向）**：清晰地勾勒出领域发展的核心脉络，以一系列**根本性问题（Fundamental Question）**串联起关键的技术范式演进。让学习者理解“为什么需要这项技术”。
@@ -423,8 +425,11 @@ PROMPT_INSTRUCTION_THEORIES = r"""
 
 请根据以上原则，审阅并整合以下提供的三本教材目录，输出一份全新的、符合要求的入门课程目录：
 
-**输入材料：textbook_toc_pipeline_langgraph.py 搜集的三份世界级教材目录**
+输入材料：textbook_toc_pipeline_langgraph.py 搜集的三份世界级教材目录
 
+学习者期望（可选）
+
+**【设计要求】**
 在你的设计中，必须严格遵循以下两种原子结构模型：
 
 *   **流水线 (Pipeline):**
@@ -437,8 +442,7 @@ PROMPT_INSTRUCTION_THEORIES = r"""
     *   **关键特征:** 知识点之间没有严格的顺序依赖，可以并行学习或按任意顺序学习。它们是解决相关问题的不同方法、工具或概念。
     *   **例子:** Python的各种数据结构、机器学习的各种分类算法、CSS的各种选择器。
 
-### 3. 执行步骤 (Execution Steps)
-
+**【构建步骤】**
 1.  **分析与分组:** 仔细阅读输入的知识点列表。识别出哪些知识点可以串联成“流水线”，哪些可以归类到不同的“工具箱”中，形成小节(Group)。
 2.  **设计微观结构:** 在每个小节内部，排列知识点（Section）的顺序，确保逻辑通顺。
 3.  **精炼标题:** 为每个小节和知识点撰写清晰、简洁且具有引导性的标题。
@@ -454,9 +458,185 @@ PROMPT_INSTRUCTION_THEORIES = r"""
         - `suggested_contents`: 该知识点中**建议包含的核心内容**清单（数组）。
 5.  **格式化输出:** 确保最终输出是一个结构严谨、格式正确的单一JSON对象，代表这一个章节的完整结构。不要包含任何多余解释性的文字
         
-### 4. 高质量范例 (One-Shot Example)
+**【输出范例 (JSON)】**
+```json
+{
+    "title": "Natural Language Processing: From Foundations to Large Models",
+    "id": "cs-nlp-301",
+    "groups": [
+        {
+            "title": "第一章：基础篇 · 让机器理解语言的基石",
+            "id": "nlp-ch-1",
+            "structure_type": "pipeline",
+            "sections": [
+                {
+                    "title": "1.1 根本问题：为何机器处理文本如此困难？",
+                    "id": "nlp-sec-1-1-1",
+                    "relation_to_previous": "first_in_sequence",
+                    "primary_goal": "通过展示语言的歧义性、非结构化和多样性，阐明自然语言处理（NLP）领域的核心挑战，并建立起将文本转化为机器可处理格式的必要性。",
+                    "suggested_modules": [
+                        "case_study",
+                        "mermaid diagram"
+                    ],
+                    "suggested_contents": [
+                        "**核心概念：歧义性 (Ambiguity)** - 展示词法歧义 (e.g., 'bank'), 句法歧义 (e.g., 'I saw a man with a telescope'), 和语义歧义的实例。",
+                        "**核心挑战：非结构化特性** - 对比非结构化的自然语言与结构化的数据库表格，强调从文本中提取信息的难度。",
+                        "**核心挑战：上下文依赖** - 解释同一个词在不同上下文中意义完全不同，引出上下文理解的重要性。",
+                        "**基本框架** - 提出NLP任务的基本处理流程：原始文本 -> 预处理 -> 特征表示 -> 模型建模 -> 任务输出。"
+                    ]
+                },
+                {
+                    "title": "1.2 文本预处理：从原始语料到结构化词元流",
+                    "id": "nlp-sec-1-1-2",
+                    "relation_to_previous": "builds_on",
+                    "primary_goal": "介绍作为所有NLP任务起点的文本预处理流水线，包括分词（Tokenization）、规范化（Normalization）和过滤（Filtering）等关键步骤及其实现方法。",
+                    "suggested_modules": [
+                        "code_example",
+                        "checklist",
+                        "common_mistake_warning"
+                    ],
+                    "suggested_contents": [
+                        "**分词 (Tokenization)** - 讲解词分词、句子分词，并简要介绍更高级的子词分词（如BPE），并讨论其对处理未登录词的优势。",
+                        "**规范化 (Normalization)** - 详细对比词干提取 (Stemming) 和词形还原 (Lemmatization) 的区别，并提供具体例子 (e.g., 'studies' -> 'studi' vs. 'study')。",
+                        "**过滤 (Filtering)** - 解释停用词 (Stop Words) 移除的概念，并讨论何时应该（或不应该）移除停用词。",
+                        "**代码实践** - 提供使用NLTK或spaCy库完成一套完整预处理流程的Python代码片段。"
+                    ]
+                }
+            ]
+        },
+        {
+            "title": "第二章：文本表示 · 将词语转化为向量",
+            "id": "nlp-ch-2",
+            "structure_type": "toolbox",
+            "sections": [
+                {
+                    "title": "2.1 核心思想：分布式表示假说",
+                    "id": "nlp-sec-2-1-1",
+                    "relation_to_previous": "first_in_sequence",
+                    "primary_goal": "解释将词语映射到向量空间的核心思想，并引入“一个词的含义由其上下文决定”的分布式假说，作为理解现代词向量模型的基础。",
+                    "suggested_modules": [
+                        "mermaid diagram"
+                    ],
+                    "suggested_contents": [
+                        "**核心引言** - 引用J.R. Firth的名言：'You shall know a word by the company it keeps.'",
+                        "**向量空间类比** - 使用2D/3D图示展示词向量关系，例如著名的 `vector('King') - vector('Man') + vector('Woman') ≈ vector('Queen')`。",
+                        "**分布式 vs. 符号表示** - 对比词向量（分布式）与One-Hot编码（符号式）的差异，强调分布式表示的语义捕捉能力。"
+                    ]
+                },
+                {
+                    "title": "2.2 工具一 (统计方法)：TF-IDF与词袋模型",
+                    "id": "nlp-sec-2-2-1",
+                    "relation_to_previous": "tool_in_toolbox",
+                    "primary_goal": "详细拆解词袋模型（BoW）和TF-IDF的计算原理，并分析它们作为稀疏、离散表示方法的优势（简单、可解释）与核心局限（无法捕捉语义、维度灾难）。",
+                    "suggested_modules": [
+                        "code_example",
+                        "comparison"
+                    ],
+                    "suggested_contents": [
+                        "**词袋模型 (BoW)** - 解释如何将一个句子或文档表示为一个忽略语序的词频向量。",
+                        "**TF-IDF计算** - 分步讲解词频 (Term Frequency) 和逆文档频率 (Inverse Document Frequency) 的计算公式和直觉含义。",
+                        "**动手计算** - 提供一个包含3-4个短文档的小型语料库，手动计算其中某个词的TF-IDF值。",
+                        "**优劣分析** - 总结其优点（简单高效）和缺点（稀疏性、维度灾难、无语义信息）。"
+                    ]
+                },
+                {
+                    "title": "2.3 工具二 (预测方法)：静态词向量 (Word2Vec & GloVe)",
+                    "id": "nlp-sec-2-2-2",
+                    "relation_to_previous": "tool_in_toolbox",
+                    "primary_goal": "深入讲解Word2Vec（包括Skip-gram和CBOW变体）和GloVe的核心工作原理，阐明它们如何通过预测上下文来学习捕捉词汇语义关系的密集向量。",
+                    "suggested_modules": [
+                        "code_example",
+                        "comparison",
+                        "case_study"
+                    ],
+                    "suggested_contents": [
+                        "**Word2Vec核心原理** - 使用图示解释Skip-gram（中心词预测上下文）和CBOW（上下文预测中心词）的神经网络结构。",
+                        "**GloVe核心原理** - 解释GloVe如何结合全局词-词共现矩阵的统计信息与预测方法的优点。",
+                        "**代码实践** - 展示如何加载预训练的Word2Vec或GloVe模型，并用它来寻找近义词或完成词汇类比任务。",
+                        "**可视化** - 使用t-SNE等降维方法可视化词向量空间，直观感受语义相近的词在空间中聚集的现象。"
+                    ]
+                },
+                {
+                    "title": "2.4 局限性：静态词向量无法解决的问题",
+                    "id": "nlp-sec-2-2-3",
+                    "relation_to_previous": "builds_on",
+                    "primary_goal": "通过“一词多义”等具体案例，揭示所有静态词向量方法的共同缺陷——无法根据上下文动态调整词义，为后续引入上下文相关的表示方法埋下伏笔。",
+                    "suggested_modules": [
+                        "common_mistake_warning"
+                    ],
+                    "suggested_contents": [
+                        "**“一词多义”问题** - 用'bank'（银行/河岸）或'stick'（棍子/坚持）的例子，说明静态词向量无法区分同一个词在不同语境下的含义。",
+                        "**上下文无关** - 强调静态词向量为每个词生成一个固定的向量，无论其上下文如何变化。",
+                        "**引出下一章** - 明确指出解决此问题的关键在于模型需要具备理解和记忆上下文的能力。"
+                    ]
+                }
+            ]
+        }
+    ]
+}
+```
+"""
 
-**输出范例 (JSON):**
+
+# 新增：理论类（原理学习 principles）风格的完整 Prompt（与 deep_preview 平行，保持相同输出协议）
+PROMPT_INSTRUCTION_THEORIES_PRINCIPLES = r"""
+你是一位顶尖的课程设计师和该领域的专家。你的核心任务是基于以下提供的三份世界顶级教材的目录，为**本科大三学生**设计一份全面而深入的入门课程大纲。
+
+**【核心目标】**
+新目录旨在帮助学习者快速构建对**[subject]**核心原理的**概念脚手架（Conceptual Scaffold）**。学完后，他们应能运用所学知识解释该领域的基本现象，并为后续的深入学习打下坚实、结构化的基础。
+
+**【原则要求】**
+1.  **遵循80/20原则，聚焦核心**：
+    *   专注于阐释该领域中，能够解释80%现象的20%核心公理、模型或理论。
+    *   **必须排除**：1）历史上重要但已过时的细节；2）过于细分的专业分支内容；3）复杂的数学推导或非必要的实现细节。
+    *   重点应放在该领域的**第一性原理（First Principles）、核心思想（Core Ideas）和分析框架（Analytical Frameworks）**上，而非零散的知识点。
+
+2.  **构建‘问题-解决方案’的逻辑框架**：
+    *   目录结构需清晰地反映该领域的**核心结构（例如：从宏观到微观，从理论到应用，按时间线发展）**。
+    *   每一章节都应以该领域的一个**根本性问题（Fundamental Question）**为驱动（例如，“社会财富是如何创造和分配的？” -> 经济学中的生产与分配理论）。
+    *   **特别强调**不同概念之间的内在逻辑和依赖关系，让知识形成一个连贯、自洽的体系。
+
+3.  **强调‘解释性知识’与现实世界的联系**：
+    *   最终目标是让学习者获得**‘解释性知识’（Explanatory Knowledge）**，使他们能够用学科视角**分析和解释**现实世界中的相关现象，而不是进行专业级别的操作或计算。
+    *   每个核心概念都必须与一个**具体、可感知的现实案例或应用场景强绑定**（例如，讲解“机会成本”时，要关联到“选择读研而非工作的得失”）。
+    *   鼓励在章节命名和内容描述中使用**生动、恰当的类比**，以降低非专业人士的认知门槛，并建立直观理解。
+
+请根据以上原则，审阅并整合以下提供的三本教材目录，输出一份全新的、符合要求的入门课程目录：
+
+输入材料：textbook_toc_pipeline_langgraph.py 搜集的三份世界级教材目录
+
+学习者期望（可选）
+
+**【设计要求】**
+在你的设计中，必须严格遵循以下两种原子结构模型：
+
+*   **流水线 (Pipeline):**
+    *   **定义:** 一系列具有**强时序性或强依赖性**的知识点。它们通常描述一个连续的过程、工作流或逻辑推演。
+    *   **关键特征:** 前一个知识点的**输出**是后一个知识点的**输入**。学习顺序**几乎不可更改**。
+    *   **例子:** 文本预处理流程、数学定理的证明步骤、一个算法的执行过程。
+
+*   **工具箱 (Toolbox):**
+    *   **定义:** 一组围绕**共同主题或目标**，但彼此**相对独立**的知识点。
+    *   **关键特征:** 知识点之间没有严格的顺序依赖，可以并行学习或按任意顺序学习。它们是解决相关问题的不同方法、工具或概念。
+    *   **例子:** Python的各种数据结构、机器学习的各种分类算法、CSS的各种选择器。
+
+**【构建步骤】**
+1.  **分析与分组:** 仔细阅读输入的知识点列表。识别出哪些知识点可以串联成“流水线”，哪些可以归类到不同的“工具箱”中，形成小节(Group)。
+2.  **设计微观结构:** 在每个小节内部，排列知识点（Section）的顺序，确保逻辑通顺。
+3.  **精炼标题:** 为每个小节和知识点撰写清晰、简洁且具有引导性的标题。
+4.  **注入元数据 (关键):** 在最终的JSON结构中，必须为每个小节（Group）和知识点（Section）添加以下元数据：
+    *   为每个**小节 (Group)** 添加 `structure_type: "pipeline" | "toolbox"` 字段。
+    *   为每个**知识点 (Section)** 添加：
+        - `relation_to_previous`: `builds_on | tool_in_toolbox | alternative_to | deep_dive_into | first_in_sequence`
+        - `primary_goal`: 用一句话清晰地定义该知识点的**核心内容目标**。它应精准描述“这节内容需要讲清楚什么核心问题”或“它要从什么角度去写”，而不是定义学习者的能力目标。
+            - **反例 (Bad)**: "学习数据清洗" (过于宽泛，是学习目标)
+            - **正例 (Good)**: "介绍数据清洗作为预处理流程第一步的核心任务，并展示常见的清洗技术。" (明确了内容范围和任务，是内容目标)
+        - `suggested_modules`: 在正常的文字阐述之外，可以额外使用的**增强表达形式**清单（数组，允许从以下枚举中挑选）：
+            `["code_example", "common_mistake_warning", "mermaid diagram", "checklist", "comparison", "case_study"]`
+        - `suggested_contents`: 该知识点中**建议包含的核心内容**清单（数组）。
+5.  **格式化输出:** 确保最终输出是一个结构严谨、格式正确的单一JSON对象，代表这一个章节的完整结构。不要包含任何多余解释性的文字
+        
+**【输出范例 (JSON)】**
 ```json
 {
     "title": "Natural Language Processing: From Foundations to Large Models",
@@ -579,8 +759,7 @@ PROMPT_INSTRUCTION_THEORIES = r"""
 PROMPT_INSTRUCTION_TOOLS = r"""
 这份大纲旨在构建一个**“技能金字塔”**。学习者将从最基础的语法和概念（金字塔的底层）开始，通过一系列精心设计的、层层递进的知识点，逐步掌握更高级的特性和应用模式，最终达到能够独立使用 **[subject]** 进行项目开发的水平（金字塔的顶层）。
 
-**核心原则：**
-
+**【核心原则】**
 1.  **原则一：循序渐进，构建稳固的技能阶梯**：
     *   **严格的自底向上结构**：必须从该工具最核心、最基础的“原子”知识点开始（例如，编程语言从“变量和数据类型”开始）。
     *   **清晰的依赖关系**：后续章节必须建立在前面章节知识的基础之上。
@@ -599,8 +778,9 @@ PROMPT_INSTRUCTION_TOOLS = r"""
 **输入材料 (可选):**
 如果提供了相关的参考资料（如其他课程大纲），请进行整合和提炼。如果没有提供，请基于你对该工具的通用知识来构建大纲。
 
-**执行步骤与输出格式要求：**
+学习者期望（可选）
 
+**【构建步骤】**
 1.  **分析与分组:** 基于 **[subject]** 的内在逻辑，设计出层层递进的章节（Group）。
 2.  **设计微观结构:** 在每个章节内部，排列知识点（Section）的顺序，确保逻辑通顺。
 3.  **精炼标题:** 撰写清晰、简洁、面向实践的标题。
@@ -613,8 +793,8 @@ PROMPT_INSTRUCTION_TOOLS = r"""
 5.  **内容限定:** 直接输出需要学习的内容，不要包含 学习背景、环境调试、安装配置 等与核心技能无关的内容。
 6.  **格式化输出:** 你的输出必须是一个单一的、完整的、语法正确的 JSON 对象，不能包含任何解释性文字、注释或 Markdown 标记。
 
-### 高质量范例 (Python 字符串)
 
+**【输出范例 (JSON)】**
 ```json
 {
     "title": "Python 核心技能路径",
@@ -651,14 +831,27 @@ PROMPT_INSTRUCTION_TOOLS = r"""
 """
 
 
-def build_prompt(subject: str, materials: Dict[str, Any], subject_type: str) -> str:
+def build_prompt(
+    subject: str,
+    materials: Dict[str, Any],
+    subject_type: str,
+    learning_style: Optional[str] = None,
+    expected_content: Optional[str] = None,
+) -> str:
     subject_type = (subject_type or "theory").strip().lower()
     # 仅投喂 tocs 列表，避免包裹额外说明字段
     mat_obj = {"tocs": materials.get("materials") or []}
     mat_json = json.dumps(mat_obj, ensure_ascii=False, indent=2)
 
+    # 统一期望文段
+    expect_clean = (expected_content or "").strip()
+    expect_placeholder = "学习者期望（可选）"
+    expect_injection = (
+        "\n\n【学习者期望】\n" + expect_clean + "\n" if expect_clean else ""
+    )
+
     if subject_type == "tool":
-        # 工具类：材料为可选参考
+        # 工具类：材料为可选参考；风格参数不生效
         text = PROMPT_INSTRUCTION_TOOLS.strip()
         try:
             text = re.sub(r"\[subject\]", subject, text)
@@ -670,15 +863,25 @@ def build_prompt(subject: str, materials: Dict[str, Any], subject_type: str) -> 
                 "```json\n" + mat_json + "\n```\n"
             )
             text = text + "\n" + injection
+        # 期望内容：在材料之后追加；若模板中包含占位符，则先移除以避免裸占位
+        if expect_clean:
+            text = text.replace(expect_placeholder, "")
+            text = text + "\n" + expect_injection
+        else:
+            text = text.replace(expect_placeholder, "")
         return text
 
-    # 理论类（默认）：材料为必需核心输入
-    text = PROMPT_INSTRUCTION_THEORIES.strip()
+    # 理论类：按学习风格选择 prompt（deep_preview 使用现有模板；principles 使用新模板）
+    style = (learning_style or "deep_preview").strip().lower()
+    if style == "principles":
+        text = PROMPT_INSTRUCTION_THEORIES_PRINCIPLES.strip()
+    else:
+        text = PROMPT_INSTRUCTION_THEORIES.strip()
     try:
         text = re.sub(r"\[subject\]", subject, text)
     except Exception:
         text = text.replace("[subject]", subject)
-    placeholder = "**输入材料：textbook_toc_pipeline_langgraph.py 搜集的三份世界级教材目录**"
+    placeholder = "输入材料：textbook_toc_pipeline_langgraph.py 搜集的三份世界级教材目录"
     injection = (
         "\n\n【输入材料（JSON）】三本教材目录如下：\n"
         "```json\n" + mat_json + "\n```\n"
@@ -688,6 +891,14 @@ def build_prompt(subject: str, materials: Dict[str, Any], subject_type: str) -> 
         text = parts[0] + injection + (parts[1] if len(parts) > 1 else "")
     else:
         text = text + "\n" + injection
+    # 期望内容：尽量使用占位符位置（放在输入材料之后）；若缺失则在材料段之后紧跟追加
+    if expect_clean:
+        if expect_placeholder in text:
+            text = text.replace(expect_placeholder, expect_injection)
+        else:
+            text = text + "\n" + expect_injection
+    else:
+        text = text.replace(expect_placeholder, "")
     return text
 
 
@@ -758,6 +969,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--llm-key", default=None, help="config.json.llms 的键名（默认 gemini-2.5-pro）")
     p.add_argument("--classifier-llm-key", default=None, help="用于主题分类的 LLM 键名（默认 gemini-2.5-flash 如存在）")
     p.add_argument("--subject-type", choices=["theory", "tool"], default=None, help="手工指定主题类型，跳过自动分类")
+    p.add_argument("--learning-style", required=True, default="原理学习", help="学习风格（必选，仅理论类生效）：principles | deep_preview | 原理学习 | 深度预习")
+    p.add_argument("--expected-content", default=None, help="学习者期望（可选，作为 prompt 追加，放在输入材料之后）")
     p.add_argument("--config", default=str(CONFIG_PATH), help="配置文件路径（默认项目根 config.json）")
     p.add_argument("--out", default=None, help="输出文件路径；未提供则自动生成到 output/reconstructed_outline")
     p.add_argument("--max-tokens", type=int, default=65536, help="最大 tokens，默认 8192")
@@ -779,6 +992,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     materials = _prepare_materials(input_obj, limit=3)
 
     cfg = _load_config(args.config)
+    # 规范化/校验学习风格
+    def _normalize_style(s: Optional[str]) -> str:
+        val = (s or "").strip().lower()
+        mapping = {
+            "principles": "principles",
+            "原理学习": "principles",
+            "deep_preview": "deep_preview",
+            "深度预习": "deep_preview",
+        }
+        return mapping.get(val, mapping.get(s or "", ""))
+
+    norm_style = _normalize_style(args.learning_style)
+    if norm_style not in ("principles", "deep_preview"):
+        print("[错误] --learning-style 必须为 principles/deep_preview 或 对应中文：原理学习/深度预习", file=sys.stderr)
+        return 2
     llm_conf = choose_llm(cfg, args.llm_key)
 
     # 分类模型（优先 gemini-2.5-flash）
@@ -796,8 +1024,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 3
     print(f"[信息] 主题分类结果: {subject} → {subject_type}", file=sys.stderr)
 
-    # 组装 prompt 并调用 LLM（根据主题类型路由）
-    prompt = build_prompt(subject, materials, subject_type)
+    # 组装 prompt 并调用 LLM（根据主题类型 + 学习风格路由；tool 分支忽略风格）
+    prompt = build_prompt(
+        subject,
+        materials,
+        subject_type,
+        learning_style=norm_style,
+        expected_content=(args.expected_content or "").strip() or None,
+    )
     if args.print_prompt:
         print("========== DEBUG: Prompt Begin ==========", file=sys.stderr)
         print(prompt, file=sys.stderr)
@@ -845,6 +1079,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 meta = {}
             meta.setdefault("subject", subject)
             meta.setdefault("subject_type", subject_type)
+            meta.setdefault("learning_style", norm_style)
+            if args.expected_content is not None:
+                meta.setdefault("expected_content", (args.expected_content or "").strip())
             # 若上游输入包含 subject_slug，也写入，便于后续链路使用
             try:
                 in_slug = (input_obj.get("subject_slug") or "").strip()

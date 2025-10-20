@@ -15,7 +15,7 @@
 
 运行
   python scripts/pipelines/langgraph/textbook_toc_pipeline_langgraph.py \
-    --subject "量子力学" --top-n 3
+    --subject "量子力学" --top-n 3 --expected-content "偏向中文NLP与预训练模型实践"
 
 依赖
   pip install -U langgraph google-generativeai openai
@@ -23,6 +23,7 @@
 注意
 - 关键错误（如 Gemini 返回无法解析为 JSON）直接抛出并终止。
 - Kimi 阶段按教材逐本隔离：单本失败记录错误但不影响其他书目。
+ - 若提供 `--expected-content`，将用于引导“推荐教材”阶段（Gemini）尽量选择更契合学习者期望的经典教材或版本。
 """
 
 from __future__ import annotations
@@ -170,6 +171,8 @@ class PipelineState(TypedDict, total=False):
     max_parallel: int
     gemini: GeminiConfig
     kimi: KimiConfig
+    expected_content: str
+    print_prompt: bool
     recommendations: List[Dict[str, Any]]
     tocs: List[Dict[str, Any]]
 
@@ -226,14 +229,21 @@ def generate_subject_slug(state: PipelineState) -> PipelineState:
 def recommend_textbooks(state: PipelineState) -> PipelineState:
     logger = logging.getLogger(__name__)
     subject = state["subject"]
+    expected = (state.get("expected_content") or "").strip()
     gem_cfg: GeminiConfig = state["gemini"]
 
     genai.configure(api_key=gem_cfg.api_key)
     model = genai.GenerativeModel(gem_cfg.model)
 
-    logger.info("[1/2] 调用 Gemini 推荐教材 … 模型=%s 主题=%s", gem_cfg.model, subject)
+    if expected:
+        logger.info("[1/2] 调用 Gemini 推荐教材 … 模型=%s 主题=%s | 学习者期望已提供", gem_cfg.model, subject)
+    else:
+        logger.info("[1/2] 调用 Gemini 推荐教材 … 模型=%s 主题=%s", gem_cfg.model, subject)
     prompt = f"""
 你是资深课程设计专家。请基于全球范围内的经典/权威/广泛采用的教材，推荐与主题“{subject}”最相关的教材。
+
+如果提供了学习者的特定期望或偏好，请在不偏离“全球经典/权威”前提下，优先选择更契合这些期望的教材或版本（如更适合某语种学习、包含某类章节、偏向某些应用/任务等）。
+{('学习者期望：\n- ' + expected + '\n') if expected else ''}
 
 输出要求：严格 JSON，且只输出以下结构：
 {{
@@ -253,9 +263,13 @@ def recommend_textbooks(state: PipelineState) -> PipelineState:
 约束：
 - 仅输出 JSON，不要附带解释或 Markdown。
 - 关注“全球经典教材”，优先列出高影响力版本（如英文原版）。
-- 数量 5~8 本为宜。
+- 一共推荐5本，优先推荐最相关的3本教材，按相关度降序输出。
 """
 
+    if state.get("print_prompt"):
+        print("========== DEBUG: Gemini Prompt Begin ==========", file=sys.stderr)
+        print(prompt, file=sys.stderr)
+        print("=========== DEBUG: Gemini Prompt End ===========", file=sys.stderr)
     resp = model.generate_content(prompt)
     text = getattr(resp, "text", "")
     data = _parse_json_str(text)
@@ -289,7 +303,7 @@ def _kimi_chat_once(client: OpenAI, model: str, messages: List[Dict[str, Any]]):
     )
 
 
-def _fetch_one_toc(kimi_cfg: KimiConfig, book: Dict[str, Any]) -> Dict[str, Any]:
+def _fetch_one_toc(kimi_cfg: KimiConfig, book: Dict[str, Any], print_prompt: bool = False) -> Dict[str, Any]:
     logger = logging.getLogger(__name__)
     client = OpenAI(base_url=kimi_cfg.base_url, api_key=kimi_cfg.api_key)
     sys_prompt = (
@@ -333,6 +347,17 @@ def _fetch_one_toc(kimi_cfg: KimiConfig, book: Dict[str, Any]) -> Dict[str, Any]
         {"role": "system", "content": sys_prompt},
         {"role": "user", "content": ask},
     ]
+
+    if print_prompt:
+        try:
+            print("========== DEBUG: Kimi System Prompt Begin ==========", file=sys.stderr)
+            print(sys_prompt, file=sys.stderr)
+            print("=========== DEBUG: Kimi System Prompt End ===========", file=sys.stderr)
+            print("========== DEBUG: Kimi User Prompt Begin ==========", file=sys.stderr)
+            print(ask, file=sys.stderr)
+            print("=========== DEBUG: Kimi User Prompt End ===========", file=sys.stderr)
+        except Exception:
+            pass
 
     finish_reason = None
     choice = None
@@ -404,7 +429,7 @@ def fetch_kimi_tocs(state: PipelineState) -> PipelineState:
     logger.info("[2/2] 并行检索教材目录 … 并行度=%d，待检索=%d 本", max_parallel, len(recs))
     results: List[Dict[str, Any]] = []
     with cf.ThreadPoolExecutor(max_workers=max_parallel) as executor:
-        future_map = {executor.submit(_fetch_one_toc, kimi_cfg, b): b for b in recs}
+        future_map = {executor.submit(_fetch_one_toc, kimi_cfg, b, bool(state.get("print_prompt"))): b for b in recs}
         for f in cf.as_completed(future_map):
             book = future_map[f]
             title = (book or {}).get("title", "")
@@ -444,7 +469,9 @@ def main():
     parser.add_argument("--max-parallel", type=int, default=5, help="Kimi 并行查询上限")
     parser.add_argument("--gemini-llm-key", type=str, default=None, help="config.json.llms 中 Gemini 的 key，例如 gemini-2.5-pro")
     parser.add_argument("--kimi-llm-key", type=str, default=None, help="config.json.llms 中 Kimi 的 key，例如 kimi-k2")
+    parser.add_argument("--expected-content", type=str, default=None, help="学习者期望（可选，用于引导推荐阶段的侧重）")
     parser.add_argument("--out", type=str, default=None, help="输出 JSON 文件路径，可选")
+    parser.add_argument("--print-prompt", action="store_true", help="打印推荐与检索阶段的完整 Prompt 以便调试")
     args = parser.parse_args()
 
     # 终端日志输出配置
@@ -472,6 +499,8 @@ def main():
         "max_parallel": max(1, int(args.max_parallel)),
         "gemini": gem_cfg,
         "kimi": kimi_cfg,
+        "expected_content": (args.expected_content or "").strip(),
+        "print_prompt": bool(args.print_prompt),
     }
 
     final_state = app.invoke(init_state)
@@ -481,6 +510,7 @@ def main():
         "subject": args.subject,
         "subject_slug": final_state.get("subject_slug") or _slugify(args.subject, "subject"),
         "top_n": init_state["top_n"],
+        "expected_content": init_state.get("expected_content") or "",
         "recommendations": final_state.get("recommendations", []),
         "tocs": final_state.get("tocs", []),
         "timestamp": datetime.utcnow().isoformat() + "Z",
