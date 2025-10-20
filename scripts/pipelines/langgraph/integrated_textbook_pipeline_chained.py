@@ -15,10 +15,11 @@
 - 重构阶段沿用“精准区分 tool/theory + 不同生成方式 + 输出 meta.subject/subject_type”。
 
 运行示例
-  python scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
+  python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
     --subject "Web 媒体技术" \
     --top-n 3 \
-    --print-prompt --stream \
+    --print-prompt \
+    --stream \
     --gemini-llm-key gemini-2.5-pro \
     --kimi-llm-key kimi-k2 \
     --reconstruct-llm-key gemini-2.5-pro \
