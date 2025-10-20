@@ -7,10 +7,12 @@ export const HeroHighlight = ({
   children,
   className,
   containerClassName,
+  showHighlight = true,
 }: {
   children: React.ReactNode;
   className?: string;
   containerClassName?: string;
+  showHighlight?: boolean;
 }) => {
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
@@ -48,26 +50,28 @@ export const HeroHighlight = ({
         className="absolute inset-0 opacity-0 dark:opacity-60 pointer-events-none z-0"
         style={dotPattern("rgba(255,255,255,0.12)")}
       />
-      <motion.div
-        className="pointer-events-none absolute inset-0 opacity-0 transition duration-300 group-hover:opacity-100 z-10"
-        style={{
-          ...dotPattern("rgb(255 160 79)"),
-          WebkitMaskImage: useMotionTemplate`
-            radial-gradient(
-              200px circle at ${mouseX}px ${mouseY}px,
-              black 0%,
-              transparent 100%
-            )
-          `,
-          maskImage: useMotionTemplate`
-            radial-gradient(
-              200px circle at ${mouseX}px ${mouseY}px,
-              black 0%,
-              transparent 100%
-            )
-          `,
-        }}
-      />
+      {showHighlight && (
+        <motion.div
+          className="pointer-events-none absolute inset-0 opacity-0 transition duration-300 group-hover:opacity-100 z-10"
+          style={{
+            ...dotPattern("rgb(255 160 79)"),
+            WebkitMaskImage: useMotionTemplate`
+              radial-gradient(
+                200px circle at ${mouseX}px ${mouseY}px,
+                black 0%,
+                transparent 100%
+              )
+            `,
+            maskImage: useMotionTemplate`
+              radial-gradient(
+                200px circle at ${mouseX}px ${mouseY}px,
+                black 0%,
+                transparent 100%
+              )
+            `,
+          }}
+        />
+      )}
 
       <div className={cn("relative z-30", className)}>{children}</div>
     </div>
@@ -108,4 +112,3 @@ export const Highlight = ({
     </motion.span>
   );
 };
-

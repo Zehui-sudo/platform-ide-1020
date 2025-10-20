@@ -25,7 +25,7 @@ export function PageLayout({ children }: { children: React.ReactNode }) {
   const isLearnPage = pathname.startsWith('/learn');
   const isHomePage = pathname === '/';
   const initializeAllPaths = useLearningStore(state => state.initializeAllPaths);
-  const [overlay, setOverlay] = useState<{ active: boolean; x: number; y: number; radius: number }>(() => ({ active: false, x: 0, y: 0, radius: 0 }));
+  const [overlay, setOverlay] = useState<{ active: boolean; x: number; y: number; radius: number; color?: string }>(() => ({ active: false, x: 0, y: 0, radius: 0 }));
   
   useEffect(() => {
     // 在应用启动时初始化所有语言的学习路径
@@ -34,12 +34,12 @@ export function PageLayout({ children }: { children: React.ReactNode }) {
 
   // Listen for route transition overlay trigger
   useEffect(() => {
-    type RouteTransitionEvent = CustomEvent<{ x: number; y: number }>;
+    type RouteTransitionEvent = CustomEvent<{ x: number; y: number; color?: string }>;
     const handler = (e: RouteTransitionEvent) => {
       try {
         const detail = e.detail;
         if (!detail) return;
-        const { x, y } = detail;
+        const { x, y, color } = detail;
         // Calculate max radius to cover the viewport from the click point
         const sw = window.innerWidth;
         const sh = window.innerHeight;
@@ -47,7 +47,7 @@ export function PageLayout({ children }: { children: React.ReactNode }) {
         const yDist = Math.max(y, sh - y);
         const radius = Math.sqrt(xDist ** 2 + yDist ** 2);
 
-        setOverlay({ active: true, x, y, radius });
+        setOverlay({ active: true, x, y, radius, color });
         // Auto hide after animation duration (match ~500ms)
         setTimeout(() => setOverlay(prev => ({ ...prev, active: false })), 550);
       } catch {}
@@ -72,6 +72,8 @@ export function PageLayout({ children }: { children: React.ReactNode }) {
                 top: overlay.y - overlay.radius,
                 left: overlay.x - overlay.radius,
                 borderRadius: "50%",
+                // If a color is provided by the sender, use it to match the page background color
+                backgroundColor: overlay.color ?? undefined,
               }}
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}

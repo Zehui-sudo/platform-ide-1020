@@ -5,6 +5,7 @@ import React, { useEffect } from "react";
 import { motion } from "framer-motion";
 import { HeroHighlight } from "@/components/ui/hero-highlight";
 import { HandWrittenTitle } from "@/components/ui/hand-writing-text";
+import { PixelTrail } from "@/components/ui/pixel-trail";
 import { useRouter } from "next/navigation";
 import localFont from "next/font/local";
 import Link from "next/link";
