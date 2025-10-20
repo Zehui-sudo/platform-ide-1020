@@ -24,7 +24,6 @@ export function ContentDisplay() {
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const currentSectionIdRef = useRef(currentSection?.id);
   const lastSectionIdRef = useRef<string | undefined>(currentSection?.id);
   const bottomReachedRef = useRef(false);
   const debugRef = useRef(false);

@@ -6,7 +6,7 @@ import { useLearningStore } from "@/store/learningStore";
 // Applies the selected font family globally to the document body.
 // Code blocks use explicit font-mono so they remain unaffected.
 export function FontApplier() {
-  const fontFamily = useLearningStore((s) => (s as any).fontFamily) as unknown as string | null;
+  const fontFamily = useLearningStore((s) => s.fontFamily ?? null);
 
   useEffect(() => {
     try {

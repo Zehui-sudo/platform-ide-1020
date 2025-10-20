@@ -73,7 +73,13 @@ export function EnhancedMarkdownRenderer({
             // Default paragraph rendering with relative spacing
             return <p className="my-4 leading-relaxed">{children}</p>;
           },
-          code: ({ node, inline, className, children, ...props }) => {
+          code: (rawProps) => {
+            type CodeRendererProps = React.ComponentPropsWithoutRef<'code'> & {
+              inline?: boolean;
+              node?: unknown;
+              children?: React.ReactNode;
+            };
+            const { node, inline, className, children, ...props } = rawProps as CodeRendererProps;
             const match = /language-(\w+(?:-\w+)?)/.exec(className || '');
             const codeContent = String(children).replace(/\n$/, '');
 
@@ -94,9 +100,10 @@ export function EnhancedMarkdownRenderer({
 
             // Interactive: python
             if (langRaw === 'interactive-python' || langRaw === 'python') {
-              const sectionId = `md-${sectionScopeId || 'global'}-${node?.position?.start.line || 0}`;
-              const startOffset = ((node as unknown) as { position?: { start?: { offset?: number }}}).position?.start?.offset ?? -1;
-              const endOffset = ((node as unknown) as { position?: { end?: { offset?: number }}}).position?.end?.offset ?? -1;
+              const position = (node as { position?: { start?: { line?: number; offset?: number }; end?: { offset?: number } } } | undefined)?.position;
+              const sectionId = `md-${sectionScopeId || 'global'}-${position?.start?.line || 0}`;
+              const startOffset = position?.start?.offset ?? -1;
+              const endOffset = position?.end?.offset ?? -1;
               const thisOrdinal = codeOrdinal++;
               return (
                 <div
@@ -121,9 +128,10 @@ export function EnhancedMarkdownRenderer({
 
             // Interactive Web Preview: JavaScript
             if (langRaw === 'interactive-javascript' || langRaw === 'javascript' || langRaw === 'js') {
-              const sectionId = `md-${sectionScopeId || 'global'}-${node?.position?.start.line || 0}`;
-              const startOffset = ((node as unknown) as { position?: { start?: { offset?: number }}}).position?.start?.offset ?? -1;
-              const endOffset = ((node as unknown) as { position?: { end?: { offset?: number }}}).position?.end?.offset ?? -1;
+              const position = (node as { position?: { start?: { line?: number; offset?: number }; end?: { offset?: number } } } | undefined)?.position;
+              const sectionId = `md-${sectionScopeId || 'global'}-${position?.start?.line || 0}`;
+              const startOffset = position?.start?.offset ?? -1;
+              const endOffset = position?.end?.offset ?? -1;
               const thisOrdinal = codeOrdinal++;
               return (
                 <div
@@ -162,7 +170,8 @@ export function EnhancedMarkdownRenderer({
 
             // Interactive Web Preview: HTML
             if (langRaw === 'html') {
-              const sectionId = `md-${sectionScopeId || 'global'}-${node?.position?.start.line || 0}`;
+              const position = (node as { position?: { start?: { line?: number } } } | undefined)?.position;
+              const sectionId = `md-${sectionScopeId || 'global'}-${position?.start?.line || 0}`;
               const thisOrdinal = codeOrdinal++;
               return (
                 <div

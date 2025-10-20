@@ -801,14 +801,14 @@ export const useLearningStore = create<LearningState & LearningActions>()(
     }),
     {
       name: 'learning-store',
-      partialize: (state) => ({
+      partialize: (state: import('@/types').LearningState & import('@/types').LearningActions) => ({
         userCodeSnippets: state.userCodeSnippets,
         uiState: state.uiState,
         chatSessions: state.chatSessions,
         activeChatSessionId: state.activeChatSessionId,
         fontSize: state.fontSize,
-        fontFamilyId: (state as any).fontFamilyId,
-        fontFamily: (state as any).fontFamily,
+        fontFamilyId: state.fontFamilyId,
+        fontFamily: state.fontFamily,
         userName: state.userName,
         aiProvider: state.aiProvider,
         userProgress: state.userProgress,

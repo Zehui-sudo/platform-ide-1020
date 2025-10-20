@@ -44,7 +44,6 @@ export function LearnNavBar() {
   const hydrated = useHydratedStore();
   const { currentPath, currentSection, loadPath, loadSection, fontSize, setFontSize, userProgress } = useLearningStore();
   const fontFamilyId = useLearningStore((s) => s.fontFamilyId);
-  const fontFamily = useLearningStore((s) => s.fontFamily);
   const setFontFamily = useLearningStore((s) => s.setFontFamily);
   const availableSubjects = useLearningStore((state) => state.availableSubjects);
   const subjectLabels = useLearningStore((state) => state.subjectLabels);

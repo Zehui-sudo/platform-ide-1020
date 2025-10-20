@@ -96,7 +96,7 @@ export function InlineHtmlPreview({
               </div>
             </div>
           </AccordionTrigger>
-          <AccordionContent forceMount={forceMount}>
+          <AccordionContent {...(forceMount ? { forceMount: true } : {})}>
             <div
               className="w-full overflow-auto rounded-md border bg-background"
               style={{ height: `${defaultHeight}px`, resize: 'vertical' as const }}
