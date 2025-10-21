@@ -3,7 +3,6 @@
 import { useEffect, useId, useMemo, Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, Sparkles, NotebookPen } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -147,7 +146,7 @@ const DebugStageSelectorInternal = () => {
     setFormField('contentResult', null);
 
     if (stage === 'generating_outline') {
-      setFormField('collectStage', { status: 'processing', detail: '正在分析主题...' });
+      setFormField('collectStage', { status: 'running', detail: '正在分析主题...' });
       setFormField('outlineStage', { status: 'pending', detail: '' });
       setFormField('logs', ['[DEBUG] 切换到 generating_outline 阶段.']);
     } else if (stage === 'outline_ready') {
@@ -178,7 +177,7 @@ const DebugStageSelectorInternal = () => {
               ],
             },
           });
-        setFormField('contentStage', { status: 'processing', detail: '1/4 生成中：JSX 语法...' });
+        setFormField('contentStage', { status: 'running', detail: '1/4 生成中：JSX 语法...' });
         setFormField('logs', ['[DEBUG] 切换到 generating_content 阶段.', '正在为第1章生成内容...']);
     } else if (stage === 'content_ready') {
       setFormField('outlineResult', {
@@ -320,9 +319,8 @@ const GeneratingOutlineView = () => {
 
   const currentStage = (collectStage.status !== 'completed' && collectStage.status !== 'error') ? '搜集参考教材' : '整合生成大纲';
 
+  // Deterministic progress based on backend numbers + smooth ramp during outline
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-
     if (failed) {
       setProgress(0);
       return;
@@ -333,49 +331,36 @@ const GeneratingOutlineView = () => {
       return;
     }
 
-    // Integration Phase (Animation)
-    if (outlineStage.status === 'processing') {
-      setProgress(p => Math.max(p, 50)); // Ensure we start at 50
-      
-      const DURATION = 120 * 1000; // 2 minutes
-      const UPDATE_INTERVAL = 100; // ms
-      const totalUpdates = DURATION / UPDATE_INTERVAL;
-      const increment = (80 - 50) / totalUpdates;
-
-      interval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 80) {
-            clearInterval(interval);
-            return 80;
-          }
-          return prev + increment;
-        });
-      }, UPDATE_INTERVAL);
-
-    } else if (collectStage.status === 'completed') {
-      setProgress(50);
-    } else if (collectStage.status === 'processing') {
-      const detail = collectStage.detail || '';
-      const match = detail.match(/(\d+)\/(\d+)/);
-      if (match) {
-        const current = parseInt(match[1], 10);
-        const total = parseInt(match[2], 10);
-        if (total > 0) {
-          setProgress((current / total) * 50);
-        }
+    // Base target from collect stage numeric progress
+    let target = 0;
+    if (collectStage.status === 'running') {
+      const p = typeof collectStage.progress === 'number' ? collectStage.progress : undefined;
+      if (typeof p === 'number' && p >= 0) {
+        target = Math.max(0, Math.min(50, p * 50));
       } else {
-        setProgress(5); // Start at 5%
+        target = Math.max(target, 1); // minimal visible progress once started
       }
-    } else {
-      setProgress(0);
+    } else if (collectStage.status === 'completed') {
+      target = 50;
     }
 
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
-  }, [collectStage, outlineStage, failed]);
+    // During outline running, keep increasing slowly up to 90 without falling back
+    if (outlineStage.status === 'running') {
+      target = Math.max(target, 55);
+    }
+
+    setProgress(prev => Math.max(prev, target));
+  }, [collectStage.status, collectStage.progress, outlineStage.status, failed]);
+
+  // Smooth ramp while outline is running
+  useEffect(() => {
+    if (failed) return;
+    if (outlineStage.status !== 'running') return;
+    const interval = setInterval(() => {
+      setProgress(prev => (prev < 90 ? prev + 0.2 : prev));
+    }, 200);
+    return () => clearInterval(interval);
+  }, [outlineStage.status, failed]);
 
 
   if (failed) {
@@ -437,7 +422,7 @@ const OutlineReadyView = () => {
 
   return (
     <div className="flex flex-col">
-      <h4 className="font-medium text-lg leading-relaxed center">大纲已生成</h4>
+      <h4 className="font-medium text-lg leading-relaxed text-center">大纲已生成</h4>
       <div className="border-t pt-3 mt-3 space-y-3">
         {groups.length > 0 && (
           <div className="border rounded bg-muted/40">
@@ -475,33 +460,39 @@ const OutlineReadyView = () => {
 };
 
 const GeneratingContentView = () => {
-  const { contentStage, isSubscribing, contentJobId, cancelContentGeneration } = useThemeGeneratorStore();
+  const { contentStage, isSubscribing, contentJobId, cancelContentGeneration, contentTotal } = useThemeGeneratorStore();
   const isGenerating = isSubscribing;
 
   const progressValue = useMemo(() => {
     if (contentStage.status === 'error') return 0;
     if (contentStage.status === 'completed') return 100;
 
+    // Prefer numeric stage progress from store
+    if (typeof contentStage.progress === 'number') {
+      return Math.max(0, Math.min(100, contentStage.progress * 100));
+    }
+
+    // Fallback: parse "已保存 N 个" and divide by estimated total
+    const mSaved = typeof contentStage.detail === 'string' ? contentStage.detail.match(/已保存\s*(\d+)\s*个/) : null;
+    if (mSaved && contentTotal && contentTotal > 0) {
+      const saved = parseInt(mSaved[1], 10);
+      return Math.max(0, Math.min(100, (saved / contentTotal) * 100));
+    }
+
+    // Last resort: parse x/y pattern
     const detail = contentStage.detail || '';
     const match = detail.match(/(\d+)\/(\d+)/);
-
     if (match) {
       const current = parseInt(match[1], 10);
       const total = parseInt(match[2], 10);
-      if (total > 0) {
-        return (current / total) * 100;
-      }
-    }
-    
-    if (contentStage.status === 'processing') {
-        return 50; // Indeterminate fallback
-    }
-    if (contentStage.status === 'pending') {
-        return 5; // Small progress for pending
+      if (total > 0) return (current / total) * 100;
     }
 
+    // Indeterminate states
+    if (contentStage.status === 'pending') return 1;
+    if (contentStage.status === 'running') return 1;
     return 0;
-  }, [contentStage]);
+  }, [contentStage, contentTotal]);
 
   const failed = contentStage.status === 'error';
 

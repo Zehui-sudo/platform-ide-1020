@@ -954,7 +954,9 @@ async def generate_and_review_by_chapter_node(state: WorkState, llm_generate, ll
                 if txt_s:
                     group_context = (group_context + "\n\n" + txt_s).strip()
                 try:
-                    (drafts_dir / f"{sid}.md").write_text(txt_s, encoding="utf-8")
+                    draft_path = (drafts_dir / f"{sid}.md")
+                    draft_path.write_text(txt_s, encoding="utf-8")
+                    logging.getLogger(__name__).info(f"[已保存草稿] {draft_path}")
                 except Exception:
                     pass
         else:
@@ -991,7 +993,9 @@ async def generate_and_review_by_chapter_node(state: WorkState, llm_generate, ll
                     txt_s = txt or ""
                 group_drafts[sid] = txt_s
                 try:
-                    (drafts_dir / f"{sid}.md").write_text(txt_s, encoding="utf-8")
+                    draft_path = (drafts_dir / f"{sid}.md")
+                    draft_path.write_text(txt_s, encoding="utf-8")
+                    logging.getLogger(__name__).info(f"[已保存草稿] {draft_path}")
                 except Exception:
                     pass
 
@@ -1041,7 +1045,9 @@ async def generate_and_review_by_chapter_node(state: WorkState, llm_generate, ll
                         txt_s = txt or ""
                     group_drafts[sid] = txt_s
                     try:
-                        (drafts_dir / f"{sid}.md").write_text(txt_s, encoding="utf-8")
+                        draft_path = (drafts_dir / f"{sid}.md")
+                        draft_path.write_text(txt_s, encoding="utf-8")
+                        logging.getLogger(__name__).info(f"[已保存草稿] {draft_path}")
                     except Exception:
                         pass
 

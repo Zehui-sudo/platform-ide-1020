@@ -39,20 +39,81 @@ async function deriveTopicFromIntegrated(integratedPath: string): Promise<{ subj
   }
 }
 
-function parseLine(job: JobRecord, line: string, counters: { saved: number }): void {
+async function computeSectionTotals(integratedPath: string): Promise<{ total: number; perChapter: number[] }> {
+  try {
+    const text = await fs.readFile(integratedPath, { encoding: 'utf-8' });
+    const json = JSON.parse(text);
+    const outline = json?.reconstructed_outline || json;
+    let total = 0;
+    const perChapter: number[] = [];
+    if (Array.isArray(outline?.groups)) {
+      for (const g of outline.groups) {
+        const c = Array.isArray(g?.sections) ? g.sections.length : 0;
+        perChapter.push(c);
+        total += c;
+      }
+    } else if (Array.isArray(outline?.chapters)) {
+      for (const cpt of outline.chapters) {
+        const c = Array.isArray(cpt?.sections) ? cpt.sections.length : 0;
+        perChapter.push(c);
+        total += c;
+      }
+    } else if (Array.isArray(outline?.sections)) {
+      total = outline.sections.length;
+      if (total > 0) perChapter.push(total);
+    }
+    return { total, perChapter };
+  } catch {
+    return { total: 0, perChapter: [] };
+  }
+}
+
+function parseLine(job: JobRecord, line: string, counters: { draft: number; total: number; perChapter: number[]; finalized: boolean }): void {
   try {
     // 选择章节信息
     const mSel = line.match(/选择章节\s*:\s*\[([^\]]*)\]/);
     if (mSel) {
       const list = mSel[1].split(',').map(s => s.trim()).filter(Boolean);
-      updateStage(job, 'content', { status: 'running', detail: `选择章节: ${list.length} 个` });
+      // 尝试根据选择章节重算总量（章节编号通常为 1-based）
+      let selectedTotal = 0;
+      for (const tok of list) {
+        const n = parseInt(tok, 10);
+        if (!isNaN(n) && n > 0 && n <= counters.perChapter.length) {
+          selectedTotal += counters.perChapter[n - 1];
+        }
+      }
+      if (selectedTotal > 0) counters.total = selectedTotal;
+      const prog = counters.total > 0 ? Math.min(0.9, (counters.draft / counters.total) * 0.9) : undefined;
+      updateStage(job, 'content', {
+        status: 'running',
+        detail: `选择章节: ${list.length} 个（目标 ${counters.total || '?'} 个知识点）`,
+        progress: prog,
+      });
       return;
     }
 
-    // 文件保存
-    if (/已保存\s*:\s*/.test(line) || /大纲已保存\s*:\s*/.test(line)) {
-      counters.saved += 1;
-      updateStage(job, 'content', { status: 'running', detail: `已保存 ${counters.saved} 个文件` });
+    // 草稿保存（占 90%）
+    if (/\[已保存草稿\]/.test(line)) {
+      counters.draft += 1;
+      const base = counters.total > 0 ? `草稿 ${counters.draft}/${counters.total}` : `草稿 ${counters.draft}`;
+      const prog = counters.total > 0 ? Math.min(0.9, (counters.draft / counters.total) * 0.9) : undefined;
+      updateStage(job, 'content', {
+        status: 'running',
+        detail: base,
+        progress: prog,
+      });
+      return;
+    }
+
+    // 最终落盘（发布完成，+10%）
+    if (/\[大纲已保存\]/.test(line) || /大纲已保存\s*:\s*/.test(line)) {
+      counters.finalized = true;
+      const base = counters.total > 0 ? `草稿 ${counters.draft}/${counters.total} · 已发布` : `已发布`;
+      updateStage(job, 'content', {
+        status: 'running',
+        detail: base,
+        progress: 1,
+      });
       return;
     }
 
@@ -89,6 +150,7 @@ function parseLine(job: JobRecord, line: string, counters: { saved: number }): v
 export async function startChapters(params: GenerateContentParams) {
   const { inputPath } = params;
   const meta = await deriveTopicFromIntegrated(inputPath);
+  const totals = await computeSectionTotals(inputPath);
   const job = createJob('content', {
     subject: meta.subject,
   });
@@ -118,7 +180,11 @@ export async function startChapters(params: GenerateContentParams) {
   job.pid = child.pid;
 
   // 初始阶段
-  updateStage(job, 'content', { status: 'running', detail: '启动脚本中…' });
+  updateStage(job, 'content', {
+    status: 'running',
+    detail: totals.total > 0 ? `草稿 0/${totals.total}` : '启动脚本中…',
+    progress: totals.total > 0 ? 0 : undefined,
+  });
   broadcast(job, 'log', { line: `[orchestrator] spawn: ${py} ${args.join(' ')}` });
   broadcast(job, 'log', { line: `[orchestrator] cwd: ${repoRoot()}` });
   // 提前广播日志文件位置（脚本内置 log）
@@ -129,7 +195,7 @@ export async function startChapters(params: GenerateContentParams) {
     updateStage(job, 'content', { status: 'running', detail: '准备生成章节内容' });
   });
 
-  const counters = { saved: 0 };
+  const counters = { draft: 0, total: totals.total, perChapter: totals.perChapter, finalized: false };
   const onData = (buf: Buffer) => {
     const text = buf.toString('utf-8');
     const lines = text.split(/\r?\n/);

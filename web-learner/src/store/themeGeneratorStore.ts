@@ -24,6 +24,9 @@ interface ThemeGeneratorState {
   contentJobId: string | null;
   outlineResult: any | null;
   contentResult: any | null;
+  // Estimated totals for progress tracking
+  contentTotal: number | null;
+  contentSaved: number | null;
 
   // UI State
   logs: string[];
@@ -44,6 +47,7 @@ interface ThemeGeneratorState {
   subscribeToOutline: (jobId: string) => void;
   subscribeToContent: (jobId: string) => void;
   cancelContentGeneration: () => Promise<void>;
+  cancelOutlineGeneration: () => Promise<void>;
   loadCourse: () => void;
   reset: () => void;
   rehydrate: () => void;
@@ -62,6 +66,8 @@ const initialState = {
   contentJobId: null,
   outlineResult: null,
   contentResult: null,
+  contentTotal: null,
+  contentSaved: null,
   logs: [],
   showLogs: false,
   isSubscribing: false,
@@ -187,13 +193,43 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
         es.addEventListener('hello', (ev: MessageEvent) => {
             const data = JSON.parse(ev.data);
             const snap = data?.snapshot || {};
-            if (snap?.stages?.content) set({ contentStage: { status: snap.stages.content.status, detail: snap.stages.content.detail } });
+            if (snap?.stages?.content) {
+              const st = snap.stages.content;
+              // Try infer saved count from detail
+              let saved: number | undefined;
+              const m = typeof st.detail === 'string' ? st.detail.match(/已保存\s*(\d+)\s*个/) : null;
+              if (m) saved = parseInt(m[1], 10);
+              set((state) => {
+                const total = state.contentTotal;
+                const progress = (typeof saved === 'number' && typeof total === 'number' && total > 0)
+                  ? Math.max(0, Math.min(1, saved / total))
+                  : st.progress;
+                return {
+                  contentSaved: typeof saved === 'number' ? saved : state.contentSaved,
+                  contentStage: { status: st.status, detail: st.detail, progress },
+                };
+              });
+            }
             // 不在 hello 时切换阶段，等待 end 事件统一处理
         });
 
         es.addEventListener('stage', (ev: MessageEvent) => {
             const data = JSON.parse(ev.data);
-            if (data?.id === 'content') set({ contentStage: { status: data.status, detail: data.detail } });
+            if (data?.id === 'content') {
+              let saved: number | undefined;
+              const m = typeof data.detail === 'string' ? data.detail.match(/已保存\s*(\d+)\s*个/) : null;
+              if (m) saved = parseInt(m[1], 10);
+              set((state) => {
+                const total = state.contentTotal;
+                const progress = (typeof saved === 'number' && typeof total === 'number' && total > 0)
+                  ? Math.max(0, Math.min(1, saved / total))
+                  : data.progress;
+                return {
+                  contentSaved: typeof saved === 'number' ? saved : state.contentSaved,
+                  contentStage: { status: data.status, detail: data.detail, progress },
+                };
+              });
+            }
         });
         
         es.addEventListener('log', (ev: MessageEvent) => {
@@ -225,14 +261,29 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
     },
 
       startContentGeneration: async () => {
-        const { jobId } = get();
+        const { jobId, outlineResult } = get();
         if (!jobId) return;
+
+        // Estimate total points from outline sections
+        const outline = outlineResult?.reconstructed_outline || null;
+        let total = 0;
+        if (outline) {
+          if (Array.isArray(outline.groups)) {
+            total = outline.groups.reduce((acc: number, g: any) => acc + (Array.isArray(g?.sections) ? g.sections.length : 0), 0);
+          } else if (Array.isArray(outline.chapters)) {
+            total = outline.chapters.reduce((acc: number, c: any) => acc + (Array.isArray(c?.sections) ? c.sections.length : 0), 0);
+          } else if (Array.isArray(outline.sections)) {
+            total = outline.sections.length;
+          }
+        }
 
         set({
           stage: 'generating_content',
-          contentStage: { status: 'running', detail: 'Initializing script...' },
+          contentStage: { status: 'running', detail: 'Initializing script...', progress: total > 0 ? 0 : undefined },
           contentResult: null,
           logs: [],
+          contentTotal: total || null,
+          contentSaved: 0,
         });
 
         try {
@@ -263,6 +314,19 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
           contentEvtSrc = null;
         }
         set({ stage: 'outline_ready', isSubscribing: false });
+      },
+
+      cancelOutlineGeneration: async () => {
+        const { jobId } = get();
+        if (!jobId) return;
+        try {
+          await fetch(`/api/outline/cancel?jobId=${encodeURIComponent(jobId)}`, { method: 'POST' });
+        } catch {}
+        if (outlineEvtSrc) {
+          outlineEvtSrc.close();
+          outlineEvtSrc = null;
+        }
+        set({ stage: 'idle', isSubscribing: false });
       },
       
       loadCourse: () => {
