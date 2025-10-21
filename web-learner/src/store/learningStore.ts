@@ -297,6 +297,7 @@ export const useLearningStore = create<LearningState & LearningActions>()(
         searchQuery: '',
         navCollapsed: false,
         aiCollapsed: false,
+        panelSizes: [15, 55, 30],
       },
       chatSessions: [],
       activeChatSessionId: null,
@@ -489,7 +490,7 @@ export const useLearningStore = create<LearningState & LearningActions>()(
         }));
       },
 
-      updateUIState: (uiState: Partial<{ expandedChapters: string[]; searchQuery: string; navCollapsed: boolean; aiCollapsed: boolean }>) => {
+      updateUIState: (uiState: Partial<{ expandedChapters: string[]; searchQuery: string; navCollapsed: boolean; aiCollapsed: boolean; panelSizes: number[] }>) => {
         set((state) => ({
           uiState: {
             ...state.uiState,
@@ -844,21 +845,21 @@ declare global {
 }
 
 // Initial state for non-persisted parts
-if (typeof window !== 'undefined') {
-  useLearningStore.setState({
-    currentPath: null,
-    currentSection: null,
-    loading: { path: false, section: false },
-    error: { path: null, section: null },
-    pyodideStatus: 'unloaded',
-    pyodideError: null,
-    selectedContent: null,
-    sendingMessage: false,
-    preferredSubject: undefined,
-    lastOpenedSectionId: null,
-    mermaidErrors: [],
-  });
-}
+// if (typeof window !== 'undefined') {
+//   useLearningStore.setState({
+//     currentPath: null,
+//     currentSection: null,
+//     loading: { path: false, section: false },
+//     error: { path: null, section: null },
+//     pyodideStatus: 'unloaded',
+//     pyodideError: null,
+//     selectedContent: null,
+//     sendingMessage: false,
+//     preferredSubject: undefined,
+//     lastOpenedSectionId: null,
+//     mermaidErrors: [],
+//   });
+// }
 
 // Expose store for debugging in browser console
 try {
