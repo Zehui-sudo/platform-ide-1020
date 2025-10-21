@@ -275,11 +275,11 @@ export function ThemeGenerator() {
           </TooltipContent>
         </Tooltip>
 
-        <PopoverContent className="w-[420px] p-4" align="center" side="bottom">
+        <PopoverContent className="w-80 p-4" align="center" side="bottom">
           {/* 阶段1：输入表单 */}
           {!isGenerating && !jobId && !resultOutline && (
-            <div className="space-y-3">
-              <h4 className="font-medium text-sm leading-none">生成学习主题</h4>
+            <div className="flex flex-col space-y-3">
+              <h4 className="font-medium text-lg leading-relaxed">生成学习主题</h4>
               <p className="text-xs text-muted-foreground">输入主题名称与偏好，先生成可预览的大纲</p>
               <div className="space-y-2">
                 <Input
@@ -292,12 +292,12 @@ export function ThemeGenerator() {
                   <Button
                     variant={generationStyle === 'principle' ? 'default' : 'outline'}
                     onClick={() => setGenerationStyle('principle')}
-                    className={cn("h-8 text-xs", generationStyle === 'principle' && "bg-primary/80 hover:bg-primary/70")}
+                    className={cn("h-8 text-xs", generationStyle === 'principle' && "bg-primary")}
                   >原理学习</Button>
                   <Button
                     variant={generationStyle === 'preview' ? 'default' : 'outline'}
                     onClick={() => setGenerationStyle('preview')}
-                    className={cn("h-8 text-xs", generationStyle === 'preview' && "bg-primary/80 hover:bg-primary/70")}
+                    className={cn("h-8 text-xs", generationStyle === 'preview' && "bg-primary")}
                   >深度预习</Button>
                 </div>
                 <Textarea
@@ -311,7 +311,7 @@ export function ThemeGenerator() {
                 <Button
                   variant="outline"
                   onClick={handleGenerate}
-                  className="flex-1 h-8 text-sm hover:bg-primary/90 hover:text-primary-foreground"
+                  className="flex-1 h-8 text-sm hover:bg-primary hover:text-primary-foreground"
                   disabled={!themeName.trim() || !content.trim() || isGenerating}
                 >开始生成大纲</Button>
               </div>
@@ -320,10 +320,8 @@ export function ThemeGenerator() {
 
           {/* 阶段3：结果预览（若进入阶段4，则隐藏） */}
           {!isGenerating && !!resultOutline && !isContentGenerating && !contentJobId && !contentResult && (
-            <div className="space-y-3">
-              <h4 className="font-medium text-sm leading-none">大纲已生成</h4>
-              <div className="text-[11px] text-muted-foreground break-words">主题: {resultOutline?.reconstructed_outline?.meta?.subject || themeName}</div>
-              <div className="text-[11px] text-muted-foreground">类型: {resultOutline?.reconstructed_outline?.meta?.subject_type}</div>
+            <div className="flex flex-col space-y-3">
+              <h4 className="font-bold text-lg leading-relaxed center">大纲已生成</h4>
               {(() => {
                 const outline = resultOutline?.reconstructed_outline || null;
                 let groups: any[] = [];
