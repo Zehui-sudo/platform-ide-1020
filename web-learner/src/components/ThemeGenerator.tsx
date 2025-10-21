@@ -105,7 +105,7 @@ export function ThemeGenerator() {
           </TooltipContent>
         </Tooltip>
 
-        <PopoverContent className="w-80 p-4" align="center" side="bottom">
+        <PopoverContent className="w-80 p-5" align="center" side="bottom">
           {renderContent()}
           <DebugStageSelector />
         </PopoverContent>

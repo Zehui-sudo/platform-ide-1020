@@ -13,7 +13,10 @@
     "lint": "pnpm run --recursive lint",
     "test": "pnpm run --recursive test",
     "clean": "pnpm run --recursive clean && rm -rf node_modules",
-    "clean:modules": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +"
+    "clean:modules": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +",
+    "validate:mermaid": "pnpm --filter @platform-ide/web-learner validate:mermaid",
+    "lint:mermaid": "pnpm --filter @platform-ide/web-learner lint:mermaid",
+    "fix:mermaid": "pnpm --filter @platform-ide/web-learner fix:mermaid"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -11,6 +11,7 @@
     "lint": "next lint",
     "lint:mermaid": "node ./scripts/lint-mermaid.mjs",
     "fix:mermaid": "node ./scripts/fix-mermaid.mjs",
+    "validate:mermaid": "node ./scripts/validate-mermaid-render.mjs",
     "clean": "rm -rf .next node_modules",
     "build:ast-index": "node ./scripts/build-ast-index.mjs"
   },
