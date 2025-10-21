@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, Suspense } from "react";
+import { useEffect, useId, useMemo, Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, Sparkles, NotebookPen } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -298,41 +298,126 @@ const IdleView = () => {
 };
 
 const GeneratingOutlineView = () => {
-  const { collectStage, outlineStage } = useThemeGeneratorStore();
+  const {
+    collectStage,
+    outlineStage,
+    isSubscribing,
+    jobId,
+    cancelOutlineGeneration, // Assumed to be created in the store
+    reset,
+    setUiOpen,
+  } = useThemeGeneratorStore();
+
+  const [progress, setProgress] = useState(0);
+
+  const failed = collectStage.status === 'error' || outlineStage.status === 'error';
+  
+  const detailText = failed
+    ? (collectStage.detail || outlineStage.detail || '生成已中止')
+    : ((collectStage.status !== 'completed' && collectStage.status !== 'error') 
+        ? (collectStage.detail || '') 
+        : (outlineStage.detail || ''));
 
   const currentStage = (collectStage.status !== 'completed' && collectStage.status !== 'error') ? '搜集参考教材' : '整合生成大纲';
-  const detail = (currentStage === '搜集参考教材') ? (collectStage.detail || '') : (outlineStage.detail || '');
-  const failed = (collectStage.status === 'error' || outlineStage.status === 'error');
 
-  const progressValue = useMemo(() => {
-    if (failed) return 0;
-    if (collectStage.status !== 'completed' && collectStage.status !== 'error') {
-      return 33;
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+
+    if (failed) {
+      setProgress(0);
+      return;
     }
-    if (outlineStage.status !== 'completed' && outlineStage.status !== 'error') {
-      return 66;
+
+    if (outlineStage.status === 'completed') {
+      setProgress(100);
+      return;
     }
-    return 100;
-  }, [collectStage.status, outlineStage.status, failed]);
+
+    // Integration Phase (Animation)
+    if (outlineStage.status === 'processing') {
+      setProgress(p => Math.max(p, 50)); // Ensure we start at 50
+      
+      const DURATION = 120 * 1000; // 2 minutes
+      const UPDATE_INTERVAL = 100; // ms
+      const totalUpdates = DURATION / UPDATE_INTERVAL;
+      const increment = (80 - 50) / totalUpdates;
+
+      interval = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 80) {
+            clearInterval(interval);
+            return 80;
+          }
+          return prev + increment;
+        });
+      }, UPDATE_INTERVAL);
+
+    } else if (collectStage.status === 'completed') {
+      setProgress(50);
+    } else if (collectStage.status === 'processing') {
+      const detail = collectStage.detail || '';
+      const match = detail.match(/(\d+)\/(\d+)/);
+      if (match) {
+        const current = parseInt(match[1], 10);
+        const total = parseInt(match[2], 10);
+        if (total > 0) {
+          setProgress((current / total) * 50);
+        }
+      } else {
+        setProgress(5); // Start at 5%
+      }
+    } else {
+      setProgress(0);
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [collectStage, outlineStage, failed]);
+
+
+  if (failed) {
+    return (
+      <div className="space-y-3">
+        <h4 className="font-medium text-lg leading-relaxed">生成中止</h4>
+        <div className="border-t pt-3 mt-3 space-y-3 text-center">
+          <p className="text-sm text-muted-foreground">{detailText}</p>
+          <div className="flex gap-2 justify-center pt-2">
+            <Button variant="outline" className="h-8 text-xs" onClick={() => setUiOpen(false)}>关闭</Button>
+            <Button className="h-8 text-xs" onClick={reset}>重新生成</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
-      <h4 className="font-medium text-lg leading-relaxed">生成进度</h4>
+      <h4 className="font-medium text-lg leading-relaxed">大纲生成进度</h4>
       <div className="border-t pt-3 mt-3 space-y-3">
         <div className="space-y-2">
-          <div className="text-xs">
-            <div>当前阶段：{failed ? '出错' : currentStage}</div>
-            {!!detail && !failed && (
-              <div className="text-[11px] text-muted-foreground mt-0.5">{detail}</div>
+          <div className="text-sm">
+            <div>当前阶段：{currentStage}</div>
+            {!!detailText && (
+              <div className="text-[11px] text-muted-foreground mt-0.5">{detailText}</div>
             )}
           </div>
-          {!failed && (
-            <Progress value={progressValue} className="h-2 w-full" />
-          )}
+          <Progress value={progress} className="h-2 w-full" />
         </div>
         <div className="flex items-center justify-between">
-          <div className="text-xs text-muted-foreground">日志</div>
           <LogViewToggle />
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono text-muted-foreground w-10 text-right">{`${Math.round(progress)}%`}</span>
+            {(isSubscribing && jobId) && (
+              <Button
+                variant="destructive"
+                className="h-7 px-2 text-xs"
+                onClick={cancelOutlineGeneration}
+              >中止</Button>
+            )}
+          </div>
         </div>
         <LogView />
       </div>
@@ -378,7 +463,7 @@ const OutlineReadyView = () => {
             variant="outline"
             className="h-8 text-xs"
             onClick={reset}
-          >放弃并重新生成</Button>
+          >放弃当前大纲</Button>
           <Button
             className="h-8 text-xs"
             onClick={startContentGeneration}
@@ -422,10 +507,10 @@ const GeneratingContentView = () => {
 
   return (
     <div className="space-y-3">
-      <h4 className="font-medium text-lg leading-relaxed">生成知识点</h4>
+      <h4 className="font-medium text-lg leading-relaxed">知识点生成进度</h4>
       <div className="border-t pt-3 mt-3 space-y-3">
         <div className="space-y-2">
-          <div className="text-xs">
+          <div className="text-sm">
               <div>状态：{contentStage.status === 'completed' ? '完成' : (failed ? '出错/取消' : '进行中')}</div>
               {!!contentStage.detail && <div className="text-[11px] text-muted-foreground mt-0.5">{contentStage.detail}</div>}
           </div>
@@ -434,8 +519,9 @@ const GeneratingContentView = () => {
           )}
         </div>
         <div className="flex items-center justify-between">
-          <div className="text-xs text-muted-foreground">日志</div>
+          <LogViewToggle />
           <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-10 text-right">{`${Math.round(progressValue)}%`}</span>
             {(isGenerating && contentJobId) && (
               <Button
                 variant="destructive"
@@ -443,7 +529,6 @@ const GeneratingContentView = () => {
                 onClick={cancelContentGeneration}
               >中止</Button>
             )}
-            <LogViewToggle />
           </div>
         </div>
         <LogView />
@@ -461,7 +546,7 @@ const ContentReadyView = () => {
 
   return (
     <div className="space-y-3">
-      <div className="text-lg leading-relaxed font-medium">知识点生成完成！</div>
+      <div className="text-lg leading-relaxed font-medium">知识点生成完成 🎉</div>
 
       {/* New Summary Section */}
       <div className="text-sm text-muted-foreground space-y-1 border-t pt-3 mt-3">
