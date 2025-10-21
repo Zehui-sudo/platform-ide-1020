@@ -243,7 +243,7 @@ export default function LearnLayout({
             <ResizablePanel
               ref={navPanelRef}
               collapsible
-              defaultSize={20}
+              defaultSize={15}
               minSize={navMinPercent}
               onCollapse={() => updateUIState({ navCollapsed: true })}
               onExpand={() => updateUIState({ navCollapsed: false })}
@@ -269,7 +269,7 @@ export default function LearnLayout({
             <ResizablePanel
               ref={aiPanelRef}
               collapsible
-              defaultSize={25}
+              defaultSize={20}
               minSize={aiMinPercent}
               onCollapse={() => updateUIState({ aiCollapsed: true })}
               onExpand={() => updateUIState({ aiCollapsed: false })}
