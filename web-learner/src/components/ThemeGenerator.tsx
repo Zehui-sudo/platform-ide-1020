@@ -248,7 +248,7 @@ const IdleView = () => {
         </div>
 
         <div className="space-y-1.5">
-          <Label>学习风格</Label>
+          <Label>内容深度</Label>
           <ToggleGroup
             type="single"
             variant="outline"
@@ -256,21 +256,28 @@ const IdleView = () => {
             onValueChange={(value) => {
               if (value) setFormField('generationStyle', value as 'principle' | 'preview');
             }}
+            className="grid grid-cols-2 w-full"
           >
-            <ToggleGroupItem value="principle" aria-label="原理学习" className="h-9 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
-              原理学习
+            <ToggleGroupItem value="preview" aria-label="深度预习" className="group h-auto px-3 py-2 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
+              <div className="flex flex-col items-center gap-y-1">
+                <div>深度预习</div>
+                <div className="text-xs text-muted-foreground/80 group-data-[state=on]:text-primary-foreground">(更深·初步系统性学习)</div>
+              </div>
             </ToggleGroupItem>
-            <ToggleGroupItem value="preview" aria-label="深度预习" className="h-9 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
-              深度预习
+            <ToggleGroupItem value="principle" aria-label="原理学习" className="group h-auto px-3 py-2 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
+              <div className="flex flex-col items-center gap-y-1">
+                <div>原理学习</div>
+                <div className="text-xs text-muted-foreground/80 group-data-[state=on]:text-primary-foreground">(更浅·零基础理解原理)</div>
+              </div>
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="content">具体要求</Label>
+          <Label htmlFor="content">学习期待</Label>
           <Textarea
             id="content"
-            placeholder="可以描述希望包含的具体知识点、希望达到的学习深度等..."
+            placeholder="例如：我希望了解 React 的组件化思想和状态管理机制。"
             value={content}
             onChange={(e) => setFormField('content', e.target.value)}
             className="min-h-[80px] text-sm resize-none"
