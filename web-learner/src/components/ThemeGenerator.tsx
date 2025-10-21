@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useId, useMemo } from "react";
+import { useEffect, useId, useMemo, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { useThemeGeneratorStore, GenerationStage } from "@/store/themeGeneratorStore";
 import {
@@ -104,11 +106,123 @@ export function ThemeGenerator() {
 
         <PopoverContent className="w-80 p-4" align="center" side="bottom">
           {renderContent()}
+          <DebugStageSelector />
         </PopoverContent>
       </Popover>
     </TooltipProvider>
   );
 }
+
+// --- Debug Component (DEV ONLY) ---
+
+const DebugStageSelectorInternal = () => {
+  const searchParams = useSearchParams();
+  const showDebug = searchParams.get('debug') === 'true';
+
+  if (process.env.NODE_ENV !== 'development' || !showDebug) {
+    return null;
+  }
+
+  const { setFormField, setUiOpen } = useThemeGeneratorStore();
+
+  const stages: GenerationStage[] = [
+    'idle',
+    'generating_outline',
+    'outline_ready',
+    'generating_content',
+    'content_ready',
+  ];
+
+  const setStage = (stage: GenerationStage) => {
+    setFormField('stage', stage);
+    if (stage !== 'idle') {
+      setUiOpen(true);
+    }
+
+    // Reset fields and provide mock data
+    setFormField('logs', []);
+    setFormField('outlineResult', null);
+    setFormField('contentResult', null);
+
+    if (stage === 'generating_outline') {
+      setFormField('collectStage', { status: 'processing', detail: '正在分析主题...' });
+      setFormField('outlineStage', { status: 'pending', detail: '' });
+      setFormField('logs', ['[DEBUG] 切换到 generating_outline 阶段.']);
+    } else if (stage === 'outline_ready') {
+      setFormField('outlineResult', {
+        reconstructed_outline: {
+          title: 'React 深入浅出 (模拟)',
+          groups: [
+            {
+              id: 'g1',
+              title: '第一章：React 基础',
+              sections: [{ id: 's1.1', title: '1.1 JSX 语法' }, { id: 's1.2', title: '1.2 组件与 Props' }],
+            },
+            {
+              id: 'g2',
+              title: '第二章：State 与生命周期',
+              sections: [{ id: 's2.1', title: '2.1 State 管理' }, { id: 's2.2', title: '2.2 生命周期方法' }],
+            },
+          ],
+        },
+      });
+    } else if (stage === 'generating_content') {
+        setFormField('outlineResult', {
+            reconstructed_outline: {
+              title: 'React 深入浅出 (模拟)',
+              groups: [
+                { id: 'g1', title: '第一章：React 基础', sections: [{ id: 's1.1', title: '1.1 JSX 语法' }, { id: 's1.2', title: '1.2 组件与 Props' }] },
+                { id: 'g2', title: '第二章：State 与生命周期', sections: [{ id: 's2.1', title: '2.1 State 管理' }, { id: 's2.2', title: '2.2 生命周期方法' }] },
+              ],
+            },
+          });
+        setFormField('contentStage', { status: 'processing', detail: '1/4 生成中：JSX 语法...' });
+        setFormField('logs', ['[DEBUG] 切换到 generating_content 阶段.', '正在为第1章生成内容...']);
+    } else if (stage === 'content_ready') {
+      setFormField('outlineResult', {
+        reconstructed_outline: {
+          title: 'React 深入浅出 (模拟)',
+          groups: [
+            { id: 'g1', title: '第一章：React 基础', sections: [{ id: 's1.1', title: '1.1 JSX 语法' }, { id: 's1.2', title: '1.2 组件与 Props' }] },
+            { id: 'g2', title: '第二章：State 与生命周期', sections: [{ id: 's2.1', title: '2.1 State 管理' }, { id: 's2.2', title: '2.2 生命周期方法' }] },
+            { id: 'g3', title: '第三章：Hooks', sections: [{ id: 's3.1', title: '3.1 useState' }, { id: 's3.2', title: '3.2 useEffect' }] },
+          ],
+        },
+      });
+      setFormField('contentResult', {
+        reportPath: '/output/debug/report.md',
+        publishedFiles: ['file1.md', 'file2.md', 'file3.md', 'file4.md', 'file5.md', 'file6.md'],
+      });
+    }
+  };
+
+  return (
+    <div className="mt-4 border-t pt-3">
+      <p className="text-xs font-bold text-muted-foreground">调试面板 (URL?debug=true)</p>
+      <div className="grid grid-cols-3 gap-1 mt-2">
+        {stages.map((s) => (
+          <button
+            key={s}
+            onClick={() => setStage(s)}
+            className="text-[10px] bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-900 dark:text-slate-100 px-1 py-0.5 rounded truncate"
+            title={s}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const DebugStageSelector = () => {
+  // Wrap in Suspense as useSearchParams is used internally
+  return (
+    <Suspense fallback={null}>
+      <DebugStageSelectorInternal />
+    </Suspense>
+  );
+};
 
 // --- Sub-components for each stage ---
 
@@ -117,10 +231,11 @@ const IdleView = () => {
   const isGenerating = isSubscribing;
 
   return (
-    <div className="flex flex-col space-y-3">
+    <div className="flex flex-col">
       <h4 className="font-medium text-lg leading-relaxed">生成学习主题</h4>
+      <div className="border-t space-y-2 pt-3 mt-3 ">
       <p className="text-xs text-muted-foreground">输入主题名称与偏好，先生成可预览的大纲</p>
-      <div className="space-y-2">
+
         <Input
           placeholder="主题名称（如：React 深入浅出）"
           value={themeName}
@@ -150,7 +265,7 @@ const IdleView = () => {
         <Button
           variant="outline"
           onClick={startOutlineGeneration}
-          className="flex-1 h-8 text-sm hover:bg-primary hover:text-primary-foreground"
+          className="flex-1 h-8 text-sm hover:bg-primary hover:text-primary-foreground mt-3"
           disabled={!themeName.trim() || !content.trim() || isGenerating}
         >开始生成大纲</Button>
       </div>
@@ -159,28 +274,44 @@ const IdleView = () => {
 };
 
 const GeneratingOutlineView = () => {
-  const { logs, showLogs, setFormField, collectStage, outlineStage, isSubscribing } = useThemeGeneratorStore();
-  const isGenerating = isSubscribing;
+  const { collectStage, outlineStage } = useThemeGeneratorStore();
 
   const currentStage = (collectStage.status !== 'completed' && collectStage.status !== 'error') ? '搜集参考教材' : '整合生成大纲';
   const detail = (currentStage === '搜集参考教材') ? (collectStage.detail || '') : (outlineStage.detail || '');
   const failed = (collectStage.status === 'error' || outlineStage.status === 'error');
 
+  const progressValue = useMemo(() => {
+    if (failed) return 0;
+    if (collectStage.status !== 'completed' && collectStage.status !== 'error') {
+      return 33;
+    }
+    if (outlineStage.status !== 'completed' && outlineStage.status !== 'error') {
+      return 66;
+    }
+    return 100;
+  }, [collectStage.status, outlineStage.status, failed]);
+
   return (
     <div className="space-y-3">
-      <h4 className="font-medium text-sm leading-none">生成进度</h4>
-      <div className="space-y-2">
-        <div className="flex items-center gap-2 text-xs">
-          {!failed && (<Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />)}
-          <div>
+      <h4 className="font-medium text-lg leading-relaxed">生成进度</h4>
+      <div className="border-t pt-3 mt-3 space-y-3">
+        <div className="space-y-2">
+          <div className="text-xs">
             <div>当前阶段：{failed ? '出错' : currentStage}</div>
             {!!detail && !failed && (
               <div className="text-[11px] text-muted-foreground mt-0.5">{detail}</div>
             )}
           </div>
+          {!failed && (
+            <Progress value={progressValue} className="h-2 w-full" />
+          )}
         </div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-muted-foreground">日志</div>
+          <LogViewToggle />
+        </div>
+        <LogView />
       </div>
-      <LogView />
     </div>
   );
 };
@@ -196,37 +327,39 @@ const OutlineReadyView = () => {
   const title = outline?.title || '生成目录';
 
   return (
-    <div className="flex flex-col space-y-3">
-      <h4 className="font-bold text-lg leading-relaxed center">大纲已生成</h4>
-      {groups.length > 0 && (
-        <div className="mt-1.5 border rounded bg-muted/40">
-          <div className="px-2 py-1.5 text-xs font-medium border-b">{title} · 目录预览</div>
-          <div className="max-h-56 overflow-auto p-2">
-            {groups.map((g: any, gi: number) => (
-              <div key={g?.id || gi} className="mb-2 last:mb-0">
-                <div className="text-xs font-medium leading-snug">{g?.title || `第${gi + 1}章`}</div>
-                <ul className="mt-1 pl-4 list-disc space-y-0.5">
-                  {Array.isArray(g?.sections) && g.sections.map((s: any, si: number) => (
-                    <li key={s?.id || si} className="text-[11px] leading-tight">
-                      {typeof s === 'string' ? s : (s?.title || `节 ${gi + 1}.${si + 1}`)}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+    <div className="flex flex-col">
+      <h4 className="font-medium text-lg leading-relaxed center">大纲已生成</h4>
+      <div className="border-t pt-3 mt-3 space-y-3">
+        {groups.length > 0 && (
+          <div className="border rounded bg-muted/40">
+            <div className="px-2 py-1.5 text-xs font-medium border-b">{title} · 目录预览</div>
+            <div className="max-h-56 overflow-auto p-2">
+              {groups.map((g: any, gi: number) => (
+                <div key={g?.id || gi} className="mb-2 last:mb-0">
+                  <div className="text-xs font-medium leading-snug">{g?.title || `第${gi + 1}章`}</div>
+                  <ul className="mt-1 pl-4 list-disc space-y-0.5">
+                    {Array.isArray(g?.sections) && g.sections.map((s: any, si: number) => (
+                      <li key={s?.id || si} className="text-[11px] leading-tight">
+                        {typeof s === 'string' ? s : (s?.title || `节 ${gi + 1}.${si + 1}`)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
           </div>
+        )}
+        <div className="flex gap-2 justify-between">
+          <Button
+            variant="outline"
+            className="h-8 text-xs"
+            onClick={reset}
+          >放弃并重新生成</Button>
+          <Button
+            className="h-8 text-xs"
+            onClick={startContentGeneration}
+          >基于此大纲生成知识点</Button>
         </div>
-      )}
-      <div className="flex gap-2">
-        <Button
-          className="h-8 text-xs"
-          onClick={startContentGeneration}
-        >基于此大纲生成知识点</Button>
-        <Button
-          variant="outline"
-          className="h-8 text-xs"
-          onClick={reset}
-        >放弃并重新生成</Button>
       </div>
     </div>
   );
@@ -236,45 +369,92 @@ const GeneratingContentView = () => {
   const { contentStage, isSubscribing, contentJobId, cancelContentGeneration } = useThemeGeneratorStore();
   const isGenerating = isSubscribing;
 
+  const progressValue = useMemo(() => {
+    if (contentStage.status === 'error') return 0;
+    if (contentStage.status === 'completed') return 100;
+
+    const detail = contentStage.detail || '';
+    const match = detail.match(/(\d+)\/(\d+)/);
+
+    if (match) {
+      const current = parseInt(match[1], 10);
+      const total = parseInt(match[2], 10);
+      if (total > 0) {
+        return (current / total) * 100;
+      }
+    }
+    
+    if (contentStage.status === 'processing') {
+        return 50; // Indeterminate fallback
+    }
+    if (contentStage.status === 'pending') {
+        return 5; // Small progress for pending
+    }
+
+    return 0;
+  }, [contentStage]);
+
+  const failed = contentStage.status === 'error';
+
   return (
     <div className="space-y-3">
-      <h4 className="font-medium text-sm leading-none">生成知识点（章节内容）</h4>
-      <div className="flex items-center gap-2 text-xs">
-        {(isGenerating && contentStage.status !== 'error') && (<Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />)}
-        <div>
-          <div>状态：{contentStage.status === 'completed' ? '完成' : (contentStage.status === 'error' ? '出错/取消' : '进行中')}</div>
-          {!!contentStage.detail && <div className="text-[11px] text-muted-foreground mt-0.5">{contentStage.detail}</div>}
-        </div>
-      </div>
-      <div className="flex items-center justify-between">
-        <div className="text-xs text-muted-foreground">日志</div>
-        <div className="flex items-center gap-2">
-          {(isGenerating && contentJobId) && (
-            <Button
-              variant="destructive"
-              className="h-7 px-2 text-xs"
-              onClick={cancelContentGeneration}
-            >中止</Button>
+      <h4 className="font-medium text-lg leading-relaxed">生成知识点</h4>
+      <div className="border-t pt-3 mt-3 space-y-3">
+        <div className="space-y-2">
+          <div className="text-xs">
+              <div>状态：{contentStage.status === 'completed' ? '完成' : (failed ? '出错/取消' : '进行中')}</div>
+              {!!contentStage.detail && <div className="text-[11px] text-muted-foreground mt-0.5">{contentStage.detail}</div>}
+          </div>
+          {!failed && (
+              <Progress value={progressValue} className="h-2 w-full" />
           )}
-          <LogViewToggle />
         </div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-muted-foreground">日志</div>
+          <div className="flex items-center gap-2">
+            {(isGenerating && contentJobId) && (
+              <Button
+                variant="destructive"
+                className="h-7 px-2 text-xs"
+                onClick={cancelContentGeneration}
+              >中止</Button>
+            )}
+            <LogViewToggle />
+          </div>
+        </div>
+        <LogView />
       </div>
-      <LogView />
     </div>
   );
 };
 
 const ContentReadyView = () => {
-  const { contentResult, loadCourse, setFormField, setUiOpen } = useThemeGeneratorStore();
+  const { contentResult, outlineResult, themeName, loadCourse, setFormField, setUiOpen } = useThemeGeneratorStore();
+
+  const title = outlineResult?.reconstructed_outline?.title || themeName || '新主题';
+  const chapterCount = outlineResult?.reconstructed_outline?.groups?.length || 0;
+  const pointCount = contentResult?.publishedFiles?.length || 0;
 
   return (
     <div className="space-y-3">
-      <div className="text-xs">知识点生成完成</div>
-      <div className="text-[11px] text-muted-foreground break-words">报告: {contentResult?.reportPath || '—'}</div>
-      {Array.isArray(contentResult?.publishedFiles) && contentResult.publishedFiles.length > 0 && (
-        <div className="text-[11px] text-muted-foreground">共发布 {contentResult.publishedFiles.length} 个内容文件</div>
-      )}
-      <div className="flex gap-2">
+      <div className="text-lg leading-relaxed font-medium">知识点生成完成！</div>
+
+      {/* New Summary Section */}
+      <div className="text-sm text-muted-foreground space-y-1 border-t pt-3 mt-3">
+        <div>
+          <span className="font-semibold">生成内容：</span>
+          <span className="text-foreground">{title}</span>
+        </div>
+        {chapterCount > 0 && pointCount > 0 && (
+          <div>
+            <span className="font-semibold">包含：</span>
+            <span className="text-foreground">{chapterCount} 章, {pointCount} 个知识点</span>
+          </div>
+        )}
+      </div>
+      
+      <div className="flex gap-5 pt-2">
+        <Button variant="outline" className="h-7 px-2 text-xs" onClick={() => { setFormField('stage', 'idle'); setUiOpen(false); }}>再生成一个知识点</Button>
         <Button
           className="h-7 px-2 text-xs"
           onClick={() => {
@@ -282,8 +462,7 @@ const ContentReadyView = () => {
             setFormField('stage', 'idle');
             setUiOpen(false);
           }}
-        >打开学习路径</Button>
-        <Button variant="outline" className="h-7 px-2 text-xs" onClick={() => { setFormField('stage', 'idle'); setUiOpen(false); }}>关闭</Button>
+        >现在开始学习！</Button>
       </div>
     </div>
   );

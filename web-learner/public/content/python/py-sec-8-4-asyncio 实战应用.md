@@ -1,331 +1,332 @@
-好的，总建筑师。作为您的世界级技术教育者和 Python 专家，我将严格依据您提供的教学设计图，在已完成内容的基础上，为您续写这篇关于 `asyncio` 实战应用的高质量 Markdown 教程。
-
----
+## 8.4 asyncio 实战应用
 
 ### 🎯 核心概念
 
-`asyncio` 不仅需要并发地“启动”和“等待”任务，还需要优雅地管理异步环境下的**资源**和**数据流**。异步上下文管理器 (`async with`) 和异步迭代器 (`async for`) 正是为此而生，它们确保了像网络连接、数据库会话等资源的正确获取与释放，以及数据流的非阻塞处理，是构建健壮异步应用的关键部分。
+在异步编程中，资源的获取和释放（如数据库连接）以及数据的迭代（如从网络流中读取数据）本身可能就是 I/O 密集型操作。`async with` 和 `async for` 提供了专门的语法，使得这些**需要 `await` 的资源管理和迭代过程**能够以一种自然、安全且非阻塞的方式进行，从而避免了手动管理的复杂性和潜在错误。
 
 ### 💡 使用方式
 
-`asyncio` 扩展了 Python 的两个核心语法，使其能够与 `await` 协同工作：
-
-1.  **异步上下文管理器 (`async with`)**: 用于处理需要异步`建立(setup)`和`拆卸(teardown)`操作的资源。
-    ```python
-    async with create_async_resource() as resource:
-        # 在这个代码块中，异步资源是可用的
-        await resource.do_something()
-    # 离开代码块后，资源的异步清理工作会自动执行
-    ```
-
-2.  **异步迭代器 (`async for`)**: 用于遍历一个异步生成数据的对象，每次迭代都可能需要等待。
-    ```python
-
-    async for item in async_data_stream():
-        # 在每次循环中，我们可能会异步地等待下一个数据的到来
-        print(item)
-    ```
+-   **异步上下文管理器 (`async with`)**: 用于需要异步操作来创建和销毁的资源。它依赖于对象实现 `__aenter__` 和 `__aexit__(self, exc_type, exc_val, traceback)` 这两个异步方法。
+-   **异步迭代器 (`async for`)**: 用于遍历那些需要异步操作来获取下一个元素的数据集合。它依赖于对象实现 `__aiter__` 和 `__anext__` 方法，或者通过更简洁的异步生成器 (`async def` + `yield`) 来创建。
 
 ### 📚 Level 1: 基础认知（30秒理解）
 
-想象一个神奇的饼干罐，打开它需要一点魔法时间，每次拿饼干也需要等待下一块“生成”。`async with` 用来施法打开罐子，`async for` 用来一块块地等待并取出饼干。
+让我们从最基础的 `async with` 和 `async for` 开始，感受它们的语法和作用。
 
 ```python
 import asyncio
 
-# 这是一个异步迭代器，模拟每次都需要等待才能拿到下一个物品
-async def async_cookie_generator():
-    for i in range(1, 4):
-        # 模拟I/O等待，比如等待饼干被烤好
-        await asyncio.sleep(0.5)
-        yield f"🍪 饼干 #{i}"
-
-# 这是一个异步上下文管理器，模拟资源的获取和释放
-class AsyncCookieJar:
+# --- 异步上下文管理器 (async with) ---
+class AsyncResource:
+    """一个需要异步获取和释放的模拟资源"""
     async def __aenter__(self):
-        print("魔法咒语... 罐子正在异步打开...")
-        await asyncio.sleep(0.5)
-        print("✨ 罐子打开了!")
-        return async_cookie_generator()
+        print("资源: 正在异步连接...")
+        await asyncio.sleep(1)
+        print("资源: 连接成功！")
+        return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        print("魔法咒语... 罐子正在异步关闭...")
-        await asyncio.sleep(0.5)
-        print("🔒 罐子关闭了。")
+    async def __aexit__(self, exc_type, exc_val, traceback):
+        print("资源: 正在异步断开...")
+        await asyncio.sleep(1)
+        print("资源: 已安全断开！")
+
+# --- 异步迭代器 (async for) ---
+class AsyncCounter:
+    """一个每隔一段时间产生一个数字的异步迭代器"""
+    def __init__(self, limit):
+        self.limit = limit
+        self.count = 0
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self.count < self.limit:
+            await asyncio.sleep(0.5)
+            self.count += 1
+            return f"数据点 {self.count}"
+        else:
+            raise StopAsyncIteration
 
 async def main():
-    # 使用 async with 来管理异步资源（罐子）
-    async with AsyncCookieJar() as jar:
-        # 使用 async for 来遍历异步数据流（饼干）
-        async for cookie in jar:
-            print(f"拿到一个: {cookie}")
+    print("--- 演示 async with ---")
+    async with AsyncResource():
+        print("在 'async with' 代码块内，资源已可用。")
+    
+    print("\n--- 演示 async for ---")
+    async for item in AsyncCounter(3):
+        print(f"接收到: {item}")
 
 if __name__ == "__main__":
     asyncio.run(main())
 
-# 预期输出:
-# 魔法咒语... 罐子正在异步打开...
-# ✨ 罐子打开了!
-# 拿到一个: 🍪 饼干 #1
-# 拿到一个: 🍪 饼干 #2
-# 拿到一个: 🍪 饼干 #3
-# 魔法咒语... 罐子正在异步关闭...
-# 🔒 罐子关闭了。
+# 预期输出结果:
+# --- 演示 async with ---
+# 资源: 正在异步连接...
+# (等待1秒)
+# 资源: 连接成功！
+# 在 'async with' 代码块内，资源已可用。
+# 资源: 正在异步断开...
+# (等待1秒)
+# 资源: 已安全断开！
+#
+# --- 演示 async for ---
+# (等待0.5秒)
+# 接收到: 数据点 1
+# (等待0.5秒)
+# 接收到: 数据点 2
+# (等待0.5秒)
+# 接收到: 数据点 3
 ```
-**解读**：`async with` 确保了罐子的异步打开和关闭逻辑被正确执行。`async for` 则在循环内部处理了每次获取饼干时的异步等待，整个过程行云流水，没有阻塞。
 
 ### 📈 Level 2: 核心特性（深入理解）
 
-#### 特性1: `async with` 与自定义异步上下文管理器
+#### 特性1: 异步生成器 - 更优雅的异步迭代
 
-任何定义了 `__aenter__` 和 `__aexit__` 这两个异步方法的类，都可以作为异步上下文管理器。这在管理网络连接、数据库事务等场景中至关重要。
+手动实现 `__aiter__` 和 `__anext__` 比较繁琐。Python 提供了**异步生成器 (Async Generator)**，让我们能用 `async def` 和 `yield` 关键字以更简洁、直观的方式创建异步迭代器。
 
 ```python
 import asyncio
 import random
 
-# 模拟一个需要异步连接和关闭的数据库
-class AsyncDatabaseConnection:
-    def __init__(self, db_name):
-        self._db_name = db_name
-        self._connection = None
-        print(f"准备连接到数据库 '{self._db_name}'...")
-
-    # __aenter__ 负责异步地建立连接并返回连接对象
-    async def __aenter__(self):
-        print("正在建立异步连接...")
-        await asyncio.sleep(random.uniform(0.1, 0.3)) # 模拟网络延迟
-        self._connection = f"连接对象到<{self._db_name}>"
-        print("✅ 连接已建立!")
-        return self
-
-    # __aexit__ 负责异步地关闭连接，进行清理
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        print("正在关闭异步连接...")
-        await asyncio.sleep(random.uniform(0.1, 0.3)) # 模拟网络延迟
-        self._connection = None
-        print("❌ 连接已关闭。")
-
-    async def execute_query(self, query):
-        print(f"  > 正在执行查询: '{query}'")
-        await asyncio.sleep(random.uniform(0.2, 0.5)) # 模拟查询耗时
-        return f"查询结果 for '{query}'"
+async def sensor_data_stream(sensor_name):
+    """
+    一个异步生成器，模拟从传感器持续读取数据。
+    它使用 `async def` 定义，并用 `yield` 产出数据。
+    """
+    print(f"▶️ 启动 {sensor_name} 传感器数据流...")
+    for i in range(5):
+        # 模拟异步获取数据，例如通过网络
+        await asyncio.sleep(random.uniform(0.2, 0.6))
+        yield f"[{sensor_name}] 读数: {random.randint(0, 100)}"
+    print(f"⏹️ {sensor_name} 传感器数据流结束。")
 
 async def main():
-    async with AsyncDatabaseConnection("user_stats_db") as db:
-        result1 = await db.execute_query("SELECT * FROM users;")
-        print(f"  < 收到: {result1}")
-        result2 = await db.execute_query("SELECT * FROM logs;")
-        print(f"  < 收到: {result2}")
+    print("--- 使用异步生成器处理传感器数据 ---")
+    # async for 可以直接作用于异步生成器函数返回的对象
+    async for data_point in sensor_data_stream("温度"):
+        print(f"处理数据: {data_point}")
 
 if __name__ == "__main__":
     asyncio.run(main())
 
-# 预期输出:
-# 准备连接到数据库 'user_stats_db'...
-# 正在建立异步连接...
-# ✅ 连接已建立!
-#   > 正在执行查询: 'SELECT * FROM users;'
-#   < 收到: 查询结果 for 'SELECT * FROM users;'
-#   > 正在执行查询: 'SELECT * FROM logs;'
-#   < 收到: 查询结果 for 'SELECT * FROM logs;'
-# 正在关闭异步连接...
-# ❌ 连接已关闭。
+# 预期输出结果 (每次的读数和间隔会变化):
+# --- 使用异步生成器处理传感器数据 ---
+# ▶️ 启动 温度 传感器数据流...
+# 处理数据: [温度] 读数: 42
+# 处理数据: [温度] 读数: 89
+# 处理数据: [温度] 读数: 15
+# 处理数据: [温度] 读数: 73
+# 处理数据: [温度] 读数: 5
+# ⏹️ 温度 传感器数据流结束。
 ```
 
-#### 特性2: `async for` 与异步生成器
+#### 特性2: 在 `async with` 中处理异常
 
-编写异步迭代器最简单的方式是使用**异步生成器**，即在 `async def` 函数中使用 `yield` 关键字。这使得创建异步数据流变得异常简单。
+和普通的 `with` 语句一样，`async with` 也能保证即使在代码块内部发生异常，资源的清理逻辑 (`__aexit__`) 依然会被执行。`__aexit__` 方法会接收到异常的详细信息。
 
 ```python
 import asyncio
-from datetime import datetime
 
-# 一个异步生成器，模拟实时日志流
-async def live_log_stream(service_name):
-    """每隔一小段时间生成一条带时间戳的日志"""
-    for i in range(5):
-        await asyncio.sleep(random.uniform(0.3, 0.7))
-        timestamp = datetime.now().strftime('%H:%M:%S.%f')[:-3]
-        yield f"[{timestamp}] - {service_name}: Event {i+1} occurred."
+class SafeAsyncDatabase:
+    """一个模拟的数据库连接，能安全处理事务"""
+    async def __aenter__(self):
+        print("DB: [BEGIN] 开始事务。")
+        await asyncio.sleep(0.5)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, traceback):
+        await asyncio.sleep(0.5)
+        if exc_type is not None:
+            # 如果有异常发生，exc_type 将不是 None
+            print(f"DB: [ROLLBACK] 发生错误 '{exc_val}'，事务回滚！")
+        else:
+            print("DB: [COMMIT] 操作成功，事务提交。")
 
 async def main():
-    print("开始监控实时日志流...")
-    # 使用 async for 消费异步生成器产生的数据
-    async for log_entry in live_log_stream("PaymentService"):
-        print(f"  [LOG RECEIVED] {log_entry}")
-    print("日志流结束。")
+    print("--- 场景1: 操作成功 ---")
+    async with SafeAsyncDatabase():
+        print("执行数据库写入操作...")
+
+    print("\n--- 场景2: 操作中发生异常 ---")
+    try:
+        async with SafeAsyncDatabase():
+            print("执行数据库写入操作...")
+            raise ValueError("写入数据格式错误")
+    except ValueError as e:
+        print(f"主程序捕获到异常: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
 
-# 预期输出 (时间戳会变化):
-# 开始监控实时日志流...
-#   [LOG RECEIVED] [14:25:23.518] - PaymentService: Event 1 occurred.
-#   [LOG RECEIVED] [14:25:24.120] - PaymentService: Event 2 occurred.
-#   [LOG RECEIVED] [14:25:24.422] - PaymentService: Event 3 occurred.
-#   [LOG RECEIVED] [14:25:25.099] - PaymentService: Event 4 occurred.
-#   [LOG RECEIVED] [14:25:25.684] - PaymentService: Event 5 occurred.
-# 日志流结束。
+# 预期输出结果:
+# --- 场景1: 操作成功 ---
+# DB: [BEGIN] 开始事务。
+# 执行数据库写入操作...
+# DB: [COMMIT] 操作成功，事务提交。
+#
+# --- 场景2: 操作中发生异常 ---
+# DB: [BEGIN] 开始事务。
+# 执行数据库写入操作...
+# DB: [ROLLBACK] 发生错误 '写入数据格式错误'，事务回滚！
+# 主程序捕获到异常: 写入数据格式错误
 ```
 
 ### 🔍 Level 3: 对比学习（避免陷阱）
 
-**陷阱：在异步函数中，使用普通的 `for` 循环处理一组协程，并逐个 `await`，这会使其退化为串行执行，完全丧失并发优势。**
+**陷阱：混用同步与异步的迭代/上下文**
+
+在 `async def` 函数中，误用同步的 `for` 或 `with` 来处理异步对象，是初学者常犯的错误。这会导致 `TypeError`，因为 Python 的同步和异步协议是完全独立的。
 
 ```python
 import asyncio
-import time
 
-async def fetch_data(source, delay):
-    """模拟一个耗时的I/O操作"""
-    await asyncio.sleep(delay)
-    return f"Data from {source}"
+# 一个异步生成器
+async def async_generator():
+    yield 1
 
-# === 错误用法 ===
-# ❌ 使用 for 循环 + await，导致任务串行执行
-async def run_sequentially():
-    print("--- 错误用法：串行执行 ---")
-    tasks = [
-        fetch_data("Source A", 1),
-        fetch_data("Source B", 1),
-        fetch_data("Source C", 1)
-    ]
-    start_time = time.time()
-    results = []
-    for coro in tasks:
-        # 每次循环都会在这里等待1秒，直到上一个任务完成后才开始下一个
-        results.append(await coro)
-    duration = time.time() - start_time
-    print(f"结果: {results}")
-    print(f"耗时: {duration:.2f} 秒. 并发优势完全丧失！")
-
-# 解释为什么是错的:
-# for 循环本身是同步的。代码 `await coro` 会完全暂停 `run_sequentially` 函数，
-# 直到 `coro` 完成。这意味着三个任务是一个接一个执行的，总耗时是它们
-# 耗时之和 (1 + 1 + 1 = 3秒)，而不是并发执行。
-
-# === 正确用法 ===
-# ✅ 使用 asyncio.gather() 来并发执行所有任务
-async def run_concurrently():
-    print("\n--- 正确用法：并发执行 ---")
-    tasks = [
-        fetch_data("Source A", 1),
-        fetch_data("Source B", 1),
-        fetch_data("Source C", 1)
-    ]
-    start_time = time.time()
-    # gather 会同时启动所有任务，然后等待它们全部完成
-    results = await asyncio.gather(*tasks)
-    duration = time.time() - start_time
-    print(f"结果: {results}")
-    print(f"耗时: {duration:.2f} 秒. 真正实现了并发！")
-
-# 解释为什么这样是对的:
-# asyncio.gather() 接收所有协程对象后，会立即将它们提交给事件循环进行调度。
-# 事件循环会并发地运行它们，所有任务的等待时间会发生重叠。
-# 总耗时仅取决于耗时最长的那个任务（这里都是1秒）。
-
-if __name__ == '__main__':
-    asyncio.run(run_sequentially())
-    asyncio.run(run_concurrently())
-
-# 预期输出:
-# --- 错误用法：串行执行 ---
-# 结果: ['Data from Source A', 'Data from Source B', 'Data from Source C']
-# 耗时: 3.01 秒. 并发优势完全丧失！
-#
-# --- 正确用法：并发执行 ---
-# 结果: ['Data from Source A', 'Data from Source B', 'Data from Source C']
-# 耗时: 1.00 秒. 真正实现了并发！
-```
-
-### 🚀 Level 4: 实战应用（真实场景）
-
-**场景：** 🤖 异步天气机器人
-
-我们的机器人需要同时从多个城市的天气API获取实时数据。由于网络请求是典型的I/O密集型操作，`asyncio` 是完美的选择。我们将使用业界标准的 `aiohttp` 库，它原生支持异步上下文管理器（用于管理客户端会话）和异步迭代（用于流式读取响应体）。
-
-*请先安装 aiohttp: `pip install aiohttp`*
-
-```python
-import asyncio
-import aiohttp
-import json
-
-# 使用一个公共的、无需API Key的天气API
-CITY_APIS = {
-    "北京": "http://wttr.in/Beijing?format=j1",
-    "上海": "http://wttr.in/Shanghai?format=j1",
-    "东京": "http://wttr.in/Tokyo?format=j1",
-}
-
-async def get_weather(session, city, url):
-    """
-    使用 aiohttp session 异步获取单个城市的天气数据
-    """
-    print(f"🤖 -> {city}: 发送请求...")
-    try:
-        # session.get 是一个协程，会异步执行网络请求
-        async with session.get(url, timeout=10) as response:
-            # 确保HTTP状态码是200 (OK)
-            response.raise_for_status()
-            
-            # response.json() 也是一个协程，会异步地解析JSON响应体
-            data = await response.json()
-            
-            # 提取关键信息
-            current_condition = data['current_condition'][0]
-            temp_c = current_condition['temp_C']
-            feels_like_c = current_condition['FeelsLikeC']
-            weather_desc = current_condition['weatherDesc'][0]['value']
-
-            print(f"✅ <- {city}: 数据接收成功!")
-            return f"🏙️ {city}: {weather_desc}, 温度 {temp_c}°C, 体感 {feels_like_c}°C"
-
-    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-        print(f"❌ <- {city}: 请求失败 - {e}")
-        return f"🏙️ {city}: 数据获取失败"
+# 一个异步上下文管理器
+class AsyncContext:
+    async def __aenter__(self): pass
+    async def __aexit__(self, *args): pass
 
 async def main():
-    """主程序：创建客户端会串，并发执行所有天气查询"""
-    print("--- 异步天气机器人启动 ---")
-    
-    # aiohttp.ClientSession 是一个异步上下文管理器，
-    # 它可以高效地管理连接池和cookie。
-    async with aiohttp.ClientSession() as session:
-        # 创建一个任务列表
-        tasks = [get_weather(session, city, url) for city, url in CITY_APIS.items()]
-        
-        # 使用 asyncio.gather 并发运行所有任务
-        weather_reports = await asyncio.gather(*tasks)
-        
-        print("\n--- 天气预报汇总 ---")
-        for report in weather_reports:
-            print(report)
-        print("--------------------")
+    # === 错误用法 ===
+    # ❌ 尝试用同步 for 循环遍历异步生成器
+    print("--- 错误用法: for ... in async_generator() ---")
+    try:
+        for _ in async_generator():
+            pass
+    except TypeError as e:
+        print(f"捕获到错误: {e}")
+    # 解释为什么是错的:
+    # 普通的 for 循环期望一个实现了 __iter__ 和 __next__ 的同步迭代器。
+    # 而 async_generator() 返回的是一个异步迭代器，它实现了 __aiter__ 和 __anext__。
+    # 这两种协议不兼容，因此 Python 抛出 TypeError。
+
+    # ❌ 尝试用同步 with 处理异步上下文管理器
+    print("\n--- 错误用法: with AsyncContext() ---")
+    try:
+        with AsyncContext():
+            pass
+    except TypeError as e:
+        print(f"捕获到错误: {e}")
+    # 解释为什么是错的:
+    # 普通的 with 语句需要一个实现了 __enter__ 和 __exit__ 的上下文管理器。
+    # 而 AsyncContext 实例实现了 __aenter__ 和 __aexit__，用于 `async with`。
+    # 同样，协议不匹配导致了 TypeError。
+
+    # === 正确用法 ===
+    # ✅ 必须使用 `async for` 和 `async with`
+    print("\n--- 正确用法 ---")
+    print("使用 'async for'...")
+    async for _ in async_generator():
+        pass
+    print("使用 'async with'...")
+    async with AsyncContext():
+        pass
+    print("✅ 正确的语法执行成功！")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
 
-# 预期输出 (天气描述会变化):
-# --- 异步天气机器人启动 ---
-# 🤖 -> 北京: 发送请求...
-# 🤖 -> 上海: 发送请求...
-# 🤖 -> 东京: 发送请求...
-# ✅ <- 东京: 数据接收成功!
-# ✅ <- 上海: 数据接收成功!
-# ✅ <- 北京: 数据接收成功!
+# 预期输出结果:
+# --- 错误用法: for ... in async_generator() ---
+# 捕获到错误: 'async_generator' object is not iterable
 #
-# --- 天气预报汇总 ---
-# 🏙️ 北京: Sunny, 温度 15°C, 体感 13°C
-# 🏙️ 上海: Partly cloudy, 温度 18°C, 体感 17°C
-# 🏙️ 东京: Light rain shower, 温度 12°C, 体感 10°C
-# --------------------
+# --- 错误用法: with AsyncContext() ---
+# 捕获到错误: 'AsyncContext' object does not support the context manager protocol
+#
+# --- 正确用法 ---
+# 使用 'async for'...
+# 使用 'async with'...
+# ✅ 正确的语法执行成功！
+```
+
+### 🚀 Level 4: 实战应用（真实场景）
+
+**场景：** 👾 Pokémon API 数据探查器
+
+我们将构建一个异步程序，它能并发地从 PokéAPI 获取多个宝可梦的数据。我们将使用 `aiohttp` 这个流行的异步 HTTP 客户端库，它完美地集成了 `async with` 语法，让我们能高效、优雅地处理网络请求。
+
+(首先需要安装 `aiohttp`: `pip install aiohttp`)
+
+```python
+import asyncio
+import aiohttp
+
+# API基础URL
+BASE_URL = "https://pokeapi.co/api/v2/pokemon"
+
+async def fetch_pokemon_data(session, pokemon_id):
+    """
+    使用 aiohttp session 异步获取单个宝可梦的数据。
+    `session.get` 返回一个异步上下文管理器，必须用 `async with`。
+    """
+    url = f"{BASE_URL}/{pokemon_id}"
+    print(f"⏳ 开始请求: {url}")
+    try:
+        # 这里的 `timeout` 是一个好习惯，防止请求永远卡住
+        async with session.get(url, timeout=10) as response:
+            # 检查HTTP状态码，如果响应状态码是 4xx 或 5xx，则抛出 ClientResponseError
+            response.raise_for_status() 
+            # response.json() 是一个协程，需要 await
+            data = await response.json()
+            print(f"✅ 请求成功: {data['name']}")
+            return {
+                "name": data["name"].capitalize(),
+                "id": data["id"],
+                "types": [t["type"]["name"] for t in data["types"]]
+            }
+    except aiohttp.ClientError as e:
+        print(f"❌ 请求失败: {url}, 错误: {e}")
+        return None
+    except asyncio.TimeoutError:
+        print(f"⏰ 请求超时: {url}")
+        return None
+
+async def main():
+    pokemon_to_fetch = [1, 4, 7, 25, 133] #妙蛙种子, 小火龙, 杰尼龟, 皮卡丘, 伊布
+
+    # aiohttp.ClientSession() 也是一个异步上下文管理器
+    async with aiohttp.ClientSession() as session:
+        # 创建一个任务列表
+        tasks = [fetch_pokemon_data(session, pid) for pid in pokemon_to_fetch]
+        
+        # 使用 asyncio.gather 并发执行所有请求
+        results = await asyncio.gather(*tasks)
+
+    print("\n--- 👾 Pokedex 查询结果 ---")
+    for data in results:
+        if data:
+            types_str = ", ".join(data["types"])
+            print(f"#{data['id']:03d} - {data['name']:<10} | 类型: {types_str}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+# 预期输出结果 (请求成功/失败的顺序可能不同，但最终报告是固定的):
+# ⏳ 开始请求: https://pokeapi.co/api/v2/pokemon/1
+# ⏳ 开始请求: https://pokeapi.co/api/v2/pokemon/4
+# ⏳ 开始请求: https://pokeapi.co/api/v2/pokemon/7
+# ⏳ 开始请求: https://pokeapi.co/api/v2/pokemon/25
+# ⏳ 开始请求: https://pokeapi.co/api/v2/pokemon/133
+# ✅ 请求成功: bulbasaur
+# ✅ 请求成功: charmander
+# ✅ 请求成功: squirtle
+# ✅ 请求成功: pikachu
+# ✅ 请求成功: eevee
+#
+# --- 👾 Pokedex 查询结果 ---
+# #001 - Bulbasaur  | 类型: grass, poison
+# #004 - Charmander | 类型: fire
+# #007 - Squirtle   | 类型: water
+# #025 - Pikachu    | 类型: electric
+# #133 - Eevee      | 类型: normal
 ```
 
 ### 💡 记忆要点
-
--   **要点1**: **`async with` 管理异步生命周期**。对于任何有异步“连接/打开”和“断开/关闭”过程的资源（如网络会话、数据库连接），使用 `async with` 来确保这些操作被自动且正确地执行。
--   **要点2**: **`async for` 消费异步数据流**。当你需要处理的数据不是一次性返回，而是像消息队列、文件流或WebSocket信息那样逐块到达时，`async for` 是以非阻塞方式优雅处理它们的不二之选。
--   **要点3**: **并发靠 `gather`，串行用 `await` 循环是陷阱**。要并发执行一组独立的异步任务，请将它们放入列表并传递给 `asyncio.gather()`。直接在 `for` 循环中 `await` 任务将导致它们按顺序执行，从而失去 `asyncio` 的性能优势。
+- **要点1**: **异步配异步，同步配同步**。`async with` 用于处理实现了 `__aenter__/__aexit__` 的异步资源；`async for` 用于遍历实现了 `__aiter__/__anext__` 的异步序列。绝不能混用。
+- **要点2**: **异步生成器是首选**。当需要创建异步迭代器时，优先使用 `async def` + `yield` 的异步生成器语法，它比手动实现协议类更简洁、更不易出错。
+- **要点3**: **`aiohttp` 是实战利器**。它是 `asyncio` 生态中进行网络编程的事实标准。其 `ClientSession` 和 `response` 对象都是异步上下文管理器，完美体现了 `async with` 在真实场景中的强大作用。

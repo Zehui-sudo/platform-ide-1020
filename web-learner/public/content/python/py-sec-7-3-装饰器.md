@@ -1,295 +1,276 @@
-好的，总建筑师。作为您的世界级技术教育者和Python专家，我将严格遵循您提供的“教学设计图”，为您生成一篇高质量、多层次、结构清晰的Markdown教程。
+好的，总建筑师。作为您的世界级技术教育者和 Python 专家，我将严格遵循您的“教学设计图”，将关于“装饰器”的知识点转化为一篇高质量、多层次的 Markdown 教程。
 
 ---
 
 ### 🎯 核心概念
-装饰器（Decorator）是一种设计模式，它允许我们在**不修改原函数代码**的前提下，动态地为函数**添加额外的功能**，是Python中实现“开闭原则”（对扩展开放，对修改关闭）的强大工具。
+装饰器是一种强大的编程范式，它允许你在**不修改函数本身代码**的前提下，为其动态地“装饰”上日志记录、性能测试、事务处理等新功能，是代码复用和功能增强的利器。
 
 ### 💡 使用方式
-装饰器的本质是一个接收函数作为参数并返回一个新函数的函数。我们通常使用`@`语法糖来简化这个过程。
+装饰器的核心思想是“函数作为一等公民”和“闭包”。它本质上是一个函数（装饰器函数），接收另一个函数（被装饰函数）作为输入，并返回一个新的函数（包装后的函数）。我们通常使用 `@` 语法糖来简化这个过程。
 
-其工作流程可以分解为三步：
-1.  定义一个装饰器函数（例如 `my_decorator`），它接收一个函数 `func` 作为参数。
-2.  在装饰器函数内部，定义一个“包装函数”（例如 `wrapper`），这个包装函数会执行新添加的逻辑，并调用原始的 `func` 函数。
-3.  装饰器函数返回这个包装函数 `wrapper`。
-4.  当我们将 `@my_decorator` 放在目标函数 `say_hello` 上方时，Python会自动执行 `say_hello = my_decorator(say_hello)`。
+1.  **定义一个装饰器函数**：这个函数接收一个函数 `func` 作为参数。
+2.  **在内部定义一个包装函数 `wrapper`**：这个函数会执行额外的逻辑，并调用原始的 `func`。
+3.  **返回包装函数 `wrapper`**：装饰器函数返回这个包装好的新函数。
+4.  **使用 `@decorator_name`**：将其放在目标函数的 `def` 语句之前。
 
-这是一个简化的逻辑示意图：
-```mermaid
-graph LR
-    A[原始函数 say_hello] --> B(作为参数传入装饰器)
-    B --> C{装饰器 my_decorator}
-    C --> D[返回一个全新的包装函数 wrapper]
-    E[新函数 wrapper] --> F{执行额外功能}
-    F --> G[执行原始函数 say_hello]
-    G --> H{再次执行额外功能}
-    I[最终的 say_hello] --> E
+```python
+def my_decorator(func):
+    def wrapper(*args, **kwargs):
+        # 1. 在原函数执行前添加新功能
+        print(f"函数 {func.__name__} 开始执行...")
+        
+        # 2. 调用原函数
+        result = func(*args, **kwargs)
+        
+        # 3. 在原函数执行后添加新功能
+        print(f"函数 {func.__name__} 执行完毕。")
+        return result
+    return wrapper
 
-    style C fill:#f9f,stroke:#333,stroke-width:2px
-    style E fill:#ccf,stroke:#333,stroke-width:2px
+@my_decorator
+def say_hello():
+    print("你好，世界！")
+
+# 调用被装饰的函数
+say_hello()
 ```
 
 ### 📚 Level 1: 基础认知（30秒理解）
-提供一个最简单、最直观的代码示例，让初学者一眼就能明白基本用法。
+最简单的装饰器就是在函数执行前后打印一些信息，就像给函数加上了“入场”和“退场”的宣告。
 
 ```python
-# 1. 定义一个简单的装饰器
-def simple_decorator(func):
+# 示例代码
+def simple_announcer(func):
     """一个简单的装饰器，在函数执行前后打印信息。"""
-    def wrapper():
-        print("--- 函数开始执行 ---")
-        func()  # 调用原始函数
-        print("--- 函数执行结束 ---")
+    def wrapper(*args, **kwargs):
+        print(f"即将调用函数: {func.__name__}")
+        func(*args, **kwargs)
+        print(f"函数 {func.__name__} 调用结束。")
     return wrapper
 
-# 2. 使用 @ 语法糖应用装饰器
-@simple_decorator
-def say_hello():
-    """一个打招呼的函数。"""
-    print("你好，Python!")
+@simple_announcer
+def celebrate():
+    """一个简单的庆祝函数。"""
+    print("🎉 耶！装饰器真有趣！")
 
-# 3. 调用被装饰后的函数
-say_hello()
+# 调用被装饰后的函数
+celebrate()
 
 # 预期输出结果:
-# --- 函数开始执行 ---
-# 你好，Python!
-# --- 函数执行结束 ---
+# 即将调用函数: celebrate
+# 🎉 耶！装饰器真有趣！
+# 函数 celebrate 调用结束。
 ```
 
 ### 📈 Level 2: 核心特性（深入理解）
-展示2-3个该知识点的关键特性或高级用法，每个特性配一个完整的代码示例和简要说明。
+掌握装饰器的基础后，让我们深入了解两个让它变得更强大、更专业的关键特性。
 
-#### 特性1: 使用 `functools.wraps` 保留函数元信息
-(如果不使用`@functools.wraps`，装饰器会“偷走”原函数的元信息，如函数名`__name__`和文档字符串`__doc__`。`@wraps`可以解决这个问题，将原函数的元信息复制到包装函数中。)
+#### 特性1: 使用 `functools.wraps` 保留元信息
+装饰器会返回一个新函数来替换原函数，这会导致原函数的名称、文档字符串等元信息丢失。`functools.wraps` 装饰器可以帮助我们将这些信息从原函数复制到包装函数中。
 
 ```python
+# 示例代码
 import functools
 
 def logging_decorator(func):
-    """一个带日志功能的装饰器。"""
-    # @functools.wraps(func) 是关键！
+    """一个带日志功能的装饰器，并使用 wraps 保留元信息。"""
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        """这是wrapper函数的文档字符串。"""
-        print(f"调用函数: {func.__name__}()")
-        return func(*args, **kwargs)
+        print(f"调用函数 {func.__name__}，参数: {args}, {kwargs}")
+        result = func(*args, **kwargs)
+        print(f"函数 {func.__name__} 返回: {result}")
+        return result
     return wrapper
 
 @logging_decorator
-def calculate_sum(a, b):
+def add(a, b):
     """这是一个计算两个数之和的函数。"""
     return a + b
 
-# 打印被装饰后函数的元信息
-print(f"函数名: {calculate_sum.__name__}")
-print(f"函数文档: {calculate_sum.__doc__}")
-
-# 如果没有 @functools.wraps(func)，输出将会是：
-# 函数名: wrapper
-# 函数文档: 这是wrapper函数的文档字符串。
+print(f"函数名称: {add.__name__}")
+print(f"函数文档: {add.__doc__}")
+add(10, 5)
 
 # 预期输出结果:
-# 函数名: calculate_sum
+# 函数名称: add
 # 函数文档: 这是一个计算两个数之和的函数。
+# 调用函数 add，参数: (10, 5), {}
+# 函数 add 返回: 15
 ```
 
 #### 特性2: 带参数的装饰器
-(有时我们希望装饰器本身可以接收参数，这需要再增加一层函数嵌套。最外层函数接收装饰器的参数，并返回一个真正的装饰器。)
-```python
-import time
+有时我们希望装饰器本身能够接收参数，以实现更灵活的配置。这需要再增加一层函数嵌套，形成一个“装饰器工厂”。
 
+```python
+# 示例代码
 def repeat(num_times):
-    """
-    一个接收参数的装饰器工厂。
-    它返回一个装饰器，该装饰器会让目标函数重复执行 N 次。
-    """
-    def decorator(func):
+    """一个装饰器工厂，创建可以重复执行N次的装饰器。"""
+    def decorator_repeat(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
+            print(f"--- {func.__name__} 将被重复执行 {num_times} 次 ---")
             for i in range(num_times):
-                print(f"第 {i+1} 次执行...")
+                print(f"第 {i+1} 次执行:")
                 result = func(*args, **kwargs)
-            return result
+            return result # 返回最后一次执行的结果
         return wrapper
-    return decorator
+    return decorator_repeat
 
-# 使用带参数的装饰器，让函数重复执行3次
 @repeat(num_times=3)
 def greet(name):
-    """打印问候语。"""
+    """向某人问好。"""
     print(f"你好, {name}!")
 
-# 调用函数
-greet("世界")
+# 调用被装饰后的函数
+greet("Pythonista")
 
 # 预期输出结果:
-# 第 1 次执行...
-# 你好, 世界!
-# 第 2 次执行...
-# 你好, 世界!
-# 第 3 次执行...
-# 你好, 世界!
+# --- greet 将被重复执行 3 次 ---
+# 第 1 次执行:
+# 你好, Pythonista!
+# 第 2 次执行:
+# 你好, Pythonista!
+# 第 3 次执行:
+# 你好, Pythonista!
 ```
 
 ### 🔍 Level 3: 对比学习（避免陷阱）
-**陷阱：包装函数忘记返回原函数的执行结果**。这是初学者最常犯的错误之一，导致原函数即便有返回值，调用者也接收不到。
+一个常见的陷阱是忘记使用 `functools.wraps`，导致调试和文档生成时出现意想不到的问题。
 
 ```python
 # === 错误用法 ===
-# ❌ wrapper 函数没有返回原函数的计算结果
-def timer_decorator_wrong(func):
-    """一个错误的计时器装饰器。"""
-    @functools.wraps(func)
+# ❌ 未使用 functools.wraps
+import functools
+import time
+
+def timer_decorator_bad(func):
+    # 没有 @functools.wraps(func)
     def wrapper(*args, **kwargs):
+        """我是包装函数的文档，不是原函数的！"""
         start_time = time.time()
-        func(*args, **kwargs)  # 只执行了，但没有接收并返回其结果
+        result = func(*args, **kwargs)
         end_time = time.time()
-        print(f"函数 {func.__name__} 耗时: {end_time - start_time:.4f} 秒")
-        # 忘记了 return！
+        print(f"{func.__name__} 运行耗时: {end_time - start_time:.4f} 秒")
+        return result
     return wrapper
 
-@timer_decorator_wrong
-def add(a, b):
-    return a + b
+@timer_decorator_bad
+def slow_task_bad():
+    """这是一个模拟耗时操作的函数。"""
+    time.sleep(0.1)
+    return "任务完成"
 
-result_wrong = add(10, 20)
-print(f"计算结果 (错误): {result_wrong}") # 结果是 None，因为 wrapper 没有返回值
-
-# 预期输出结果:
-# 函数 add 耗时: 0.0000 秒
-# 计算结果 (错误): None
+print("--- 错误用法 ---")
+print(f"函数名: {slow_task_bad.__name__}") # 输出 wrapper
+print(f"函数文档: {slow_task_bad.__doc__}") # 输出 wrapper 的文档
+slow_task_bad()
+# 解释为什么是错的:
+# 被装饰后，slow_task_bad 实际上指向了内部的 wrapper 函数。
+# 它的 __name__ 和 __doc__ 都变成了 wrapper 函数的属性，
+# 原函数的元信息丢失，这会给代码自省和调试带来困扰。
 
 
 # === 正确用法 ===
-# ✅ wrapper 函数正确返回了原函数的计算结果
-def timer_decorator_correct(func):
-    """一个正确的计时器装饰器。"""
+# ✅ 使用 functools.wraps
+def timer_decorator_good(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
+        """我是包装函数的文档，但 @wraps 会保护原函数的文档。"""
         start_time = time.time()
-        # 接收原函数的返回值
-        value = func(*args, **kwargs)
+        result = func(*args, **kwargs)
         end_time = time.time()
-        print(f"函数 {func.__name__} 耗时: {end_time - start_time:.4f} 秒")
-        # 将返回值传递出去
-        return value
+        print(f"{func.__name__} 运行耗时: {end_time - start_time:.4f} 秒")
+        return result
     return wrapper
 
-@timer_decorator_correct
-def multiply(a, b):
-    return a * b
+@timer_decorator_good
+def slow_task_good():
+    """这是一个模拟耗时操作的函数。"""
+    time.sleep(0.1)
+    return "任务完成"
 
-result_correct = multiply(10, 20)
-print(f"计算结果 (正确): {result_correct}") # 结果是 200
-
-# 预期输出结果:
-# 函数 multiply 耗时: 0.0000 秒
-# 计算结果 (正确): 200
+print("\n--- 正确用法 ---")
+print(f"函数名: {slow_task_good.__name__}") # 输出 slow_task_good
+print(f"函数文档: {slow_task_good.__doc__}") # 输出 slow_task_good 的文档
+slow_task_good()
+# 解释为什么这样是对的:
+# @functools.wraps(func) 将原始函数(func)的元信息（如__name__, __doc__等）
+# 复制到了包装函数(wrapper)上，使得装饰后的函数对外表现得和原函数一模一样。
 ```
 
 ### 🚀 Level 4: 实战应用（真实场景）
-**场景：** 🎮 魔法学院的咒语施放系统
+**场景：** 🎮 游戏角色的技能授权系统
 
-在这个系统中，每个咒语都是一个函数。我们需要使用装饰器来为咒语附加施法条件检查（如魔力值）和施法效果（如元素加成），而无需修改每个咒语的基础实现。
+在一个角色扮演游戏中，某些强大的技能需要满足特定条件（如等级足够、持有特定物品）才能释放。我们可以用装饰器优雅地实现这个授权检查逻辑。
 
 ```python
+# 实战场景的完整代码
 import functools
 
-# --- 角色状态 ---
-player = {
-    "name": "大法师艾拉",
-    "mana": 50,
-    "max_mana": 100
-}
-
-# --- 装饰器 1: 魔力消耗检查 (带参数) ---
-def require_mana(cost):
-    def decorator(spell_func):
-        @functools.wraps(spell_func)
-        def wrapper(*args, **kwargs):
-            if player["mana"] >= cost:
-                player["mana"] -= cost
-                print(f"✨ 施法成功！消耗 {cost} 点魔力，剩余 {player['mana']} 点。")
-                return spell_func(*args, **kwargs)
-            else:
-                print(f"❌ 施法失败！魔力不足，需要 {cost} 点，当前只有 {player['mana']} 点。")
-                return None
+# --- 装饰器定义 ---
+def requires_level(required_level):
+    """装饰器：检查玩家等级是否满足要求。"""
+    def decorator(skill_func):
+        @functools.wraps(skill_func)
+        def wrapper(player, *args, **kwargs):
+            if player['level'] < required_level:
+                print(f"🚫 等级不足！释放 '{skill_func.__name__}' 需要 {required_level} 级，你只有 {player['level']} 级。")
+                return
+            return skill_func(player, *args, **kwargs)
         return wrapper
     return decorator
 
-# --- 装饰器 2: 元素加成 ---
-def elemental_infusion(element):
-    def decorator(spell_func):
-        @functools.wraps(spell_func)
-        def wrapper(target):
-            base_damage = spell_func(target)
-            if element == "火焰":
-                bonus_damage = int(base_damage * 0.5)
-                print(f"🔥 咒语附加了火焰效果，造成额外 {bonus_damage} 点灼烧伤害！")
-                return base_damage + bonus_damage
-            elif element == "冰霜":
-                print(f"❄️ 咒语附加了冰霜效果，{target} 的速度降低了！")
-                return base_damage
-            return base_damage
+def requires_item(required_item):
+    """装饰器：检查玩家是否持有特定物品。"""
+    def decorator(skill_func):
+        @functools.wraps(skill_func)
+        def wrapper(player, *args, **kwargs):
+            if required_item not in player['inventory']:
+                print(f"🚫 缺少物品！释放 '{skill_func.__name__}' 需要 '{required_item}'。")
+                return
+            return skill_func(player, *args, **kwargs)
         return wrapper
     return decorator
 
-# --- 咒语定义 (函数) ---
-@require_mana(cost=30)
-@elemental_infusion(element="火焰")
-def fireball(target):
-    """发射一枚火球。"""
-    print(f"对 {target} 发射了一枚威力巨大的火球...")
-    return 100  # 基础伤害
 
-@require_mana(cost=25)
-def heal(target):
-    """治疗一个目标。"""
-    print(f"对 {target} 施放了治愈之光...")
-    player["mana"] = min(player["max_mana"], player["mana"] + 40)
-    print(f"{target} 的魔力恢复了，当前为 {player['mana']}。")
-    return "治疗成功"
+# --- 玩家和技能定义 ---
+# 玩家数据
+player1 = {'name': 'Arion', 'level': 15, 'inventory': ['健康药水', '法力水晶']}
+player2 = {'name': 'Lira', 'level': 50, 'inventory': ['健康药水', '凤凰之羽']}
 
-# --- 模拟战斗 ---
-print(f"--- {player['name']} 的回合 ---")
-print(f"当前魔力: {player['mana']}/{player['max_mana']}")
+# 技能函数
+@requires_level(10)
+def fireball(player):
+    """基础火球术"""
+    print(f"🔥 {player['name']} 释放了火球术！")
 
-print("\n1. 施放【火焰强化火球术】攻击哥布林...")
-total_damage = fireball("哥布林")
-if total_damage:
-    print(f"对哥布林造成总计 {total_damage} 点伤害！")
+@requires_level(40)
+@requires_item('凤凰之羽') # 装饰器可以叠加，执行顺序从下到上
+def summon_phoenix(player):
+    """终极技能：召唤凤凰"""
+    print(f"🐦🔥 {player['name']} 召唤了传说中的凤凰！天空被火焰染红！")
 
-print(f"\n当前魔力: {player['mana']}/{player['max_mana']}")
-print("\n2. 再次尝试施放【火焰强化火球术】...")
-fireball("哥布林") # 此时魔力不足
 
-print(f"\n当前魔力: {player['mana']}/{player['max_mana']}")
-print("\n3. 施放【自我治疗】...")
-heal("自己")
+# --- 游戏模拟 ---
+print("--- 玩家 Arion 的回合 ---")
+fireball(player1)         # 成功：等级15 > 10
+summon_phoenix(player1)   # 失败：等级15 < 40，且缺少物品
+
+print("\n--- 玩家 Lira 的回合 ---")
+fireball(player2)         # 成功：等级50 > 10
+summon_phoenix(player2)   # 成功：等级50 > 40，且持有'凤凰之羽'
 
 # 预期输出结果:
-# --- 大法师艾拉 的回合 ---
-# 当前魔力: 50/100
-#
-# 1. 施放【火焰强化火球术】攻击哥布林...
-# ✨ 施法成功！消耗 30 点魔力，剩余 20 点。
-# 对 哥布林 发射了一枚威力巨大的火球...
-# 🔥 咒语附加了火焰效果，造成额外 50 点灼烧伤害！
-# 对哥布林造成总计 150 点伤害！
-#
-# 当前魔力: 20/100
-#
-# 2. 再次尝试施放【火焰强化火球术】...
-# ❌ 施法失败！魔力不足，需要 30 点，当前只有 20 点。
-#
-# 当前魔力: 20/100
-#
-# 3. 施放【自我治疗】...
-# ❌ 施法失败！魔力不足，需要 25 点，当前只有 20 点。
+# --- 玩家 Arion 的回合 ---
+# 🔥 Arion 释放了火球术！
+# 🚫 等级不足！释放 'summon_phoenix' 需要 40 级，你只有 15 级。
+# 
+# --- 玩家 Lira 的回合 ---
+# 🔥 Lira 释放了火球术！
+# 🐦🔥 Lira 召唤了传说中的凤凰！天空被火焰染红！
 ```
 
 ### 💡 记忆要点
-- **要点1**: **装饰器是“函数包装器”**。它的核心思想是接收一个函数，返回一个增强版的新函数。`@语法`只是为了调用方便。
-- **要点2**: **保护元信息靠`@wraps`**。为了不让装饰器“吃掉”原函数的文档和名字，务必从 `functools` 模块导入并使用 `@wraps`。
-- **要点3**: **别忘记`return`**。包装函数（wrapper）必须返回原函数的执行结果，否则调用者将永远得到 `None`。
+- **要点1**: **装饰器是函数**：装饰器本质上是一个接收函数并返回一个新函数的函数。`@syntax` 只是一个为了可读性而存在的语法糖。
+- **要点2**: **保留元信息**: 务必使用 `functools.wraps` 来装饰你的内部包装函数，以保留原函数的名称、文档字符串等重要信息，这对于调试和工具链至关重要。
+- **要点3**: **层层嵌套**: 带参数的装饰器需要再多一层函数嵌套，形成“三层结构”：最外层是接收参数的工厂函数，中间是标准的装饰器，最内层是执行逻辑的包装器。

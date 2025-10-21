@@ -1,355 +1,363 @@
+好的，作为一名世界级的技术教育者和 Python 专家，我将根据这份“教学设计图”为您精心打造一篇高质量的 Markdown 教程。
+
+---
+
 ### 🎯 核心概念
 
-并发编程通过“切换”或“同时”执行多个任务，解决了程序在等待慢速操作（如网络请求、文件读写）时完全阻塞的问题，从而极大地提升了应用的响应速度和资源利用率。
+并发编程旨在解决**程序执行效率**和**系统响应性**的问题。它让程序能够“同时”处理多个任务，从而充分利用现代计算机的多核CPU资源，或是在等待外部资源（如网络、磁盘）时执行其他工作，避免宝贵的CPU时间被浪费。
 
 ### 💡 使用方式
 
-理解并发编程的核心在于**区分任务类型**并**选择合适的工具**。在动手编程之前，我们需要建立一个清晰的决策模型。
+理解并发编程的核心在于区分几个关键概念，它们是选择正确工具的“决策树”。
 
-1.  **第一步：区分并发与并行**
+1.  **并发 (Concurrency)**：**逻辑上**同时处理多个任务。在单核CPU上，这意味着快速地在任务之间切换，给人一种同时运行的错觉。
+    *   **比喻**: 一位咖啡师在制作多杯咖啡。他会先为A杯加咖啡豆，在机器研磨时，去为B杯加热牛奶，然后再回来为A杯萃取。他只有一个人（单核），但通过切换任务，缩短了总耗时。
 
-    *   **并发 (Concurrency)**：逻辑上同时处理多个任务。在一个单核CPU上，操作系统通过快速切换不同任务的执行权，让你感觉它们在“同时”运行。好比一个咖啡师，他需要同时操作磨豆机、冲泡机和打奶泡机，他通过在不同任务间快速切换来完成一杯拿铁。
-    - **并行 (Parallelism)**：物理上同时执行多个任务。这需要多核CPU的支持，每个核心可以独立运行一个任务。好比多个咖啡师，每人负责一台咖啡机，他们真正在同一时间各自制作咖啡。
+2.  **并行 (Parallelism)**：**物理上**同时处理多个任务。这需要多核CPU，每个核心在同一时刻独立执行一个任务。
+    *   **比喻**: 两位咖啡师同时制作两杯不同的咖啡。他们是两个人（多核），真正地在同一时间做着各自的事情。
 
-    ```mermaid
-    graph TD
-        subgraph "单核CPU (并发 Concurrency)"
-            A[任务A] --> B(切换) --> C[任务B] --> D(切换) --> E[任务A继续]
-        end
-        subgraph "多核CPU (并行 Parallelism)"
-            subgraph 核心1
-                P1[任务A]
-            end
-            subgraph 核心2
-                P2[任务B]
-            end
-        end
-    ```
+3.  **任务类型**:
+    *   **I/O 密集型 (I/O-Bound)**: 任务大部分时间在等待外部资源，如等待网络响应、读取硬盘文件。CPU处于空闲状态。
+    *   **CPU 密集型 (CPU-Bound)**: 任务需要大量的计算，CPU持续高速运转，如复杂的数学运算、视频编码。
 
-2.  **第二步：识别任务类型**
+以下图表清晰地展示了并发与并行的区别：
 
-    *   **I/O 密集型 (I/O-Bound)**：任务的大部分时间都在等待外部资源，如等待网络响应、读取硬盘数据、等待数据库查询结果。此时CPU是空闲的。
-    *   **CPU 密集型 (CPU-Bound)**：任务的大部分时间都在进行大量的计算，如视频编码、数据分析、科学模拟。此时CPU持续高速运转。
+```mermaid
+graph TD
+    subgraph "单核CPU (并发 Concurrency)"
+        direction LR
+        T1_A["任务1: 执行"] --> T2_A["任务2: 执行"] --> T1_B["任务1: 执行"] --> T2_B["任务2: 执行"]
+    end
 
-3.  **第三步：选择合适的Python模块**
+    subgraph "多核CPU (并行 Parallelism)"
+        Core1[核心1] --> C1_T1["任务1: 执行"]
+        Core2[核心2] --> C2_T2["任务2: 执行"]
+    end
 
-| 任务类型 | 推荐模块 | 原因与关键点 |
-| :--- | :--- | :--- |
-| **I/O 密集型** | `threading` / `asyncio` | 利用等待时间切换到其他任务，避免CPU空转。受 **GIL** 影响小。 |
-| **CPU 密集型** | `multiprocessing` | 创建独立进程，每个进程有自己的解释器和内存，可以真正利用多核CPU并行计算，**不受 GIL 限制**。 |
+    style T1_A fill:#a7d3a2,stroke:#333
+    style T1_B fill:#a7d3a2,stroke:#333
+    style T2_A fill:#f9d5a5,stroke:#333
+    style T2_B fill:#f9d5a5,stroke:#333
+    style C1_T1 fill:#a7d3a2,stroke:#333
+    style C2_T2 fill:#f9d5a5,stroke:#333
+```
 
-**全局解释器锁 (Global Interpreter Lock, GIL)** 是 CPython 解释器中的一个关键机制，它确保在任何时刻，一个进程中只有一个线程在执行 Python 字节码。这使得 Python 的线程无法在多核 CPU 上实现并行计算，因此对于 CPU 密集型任务，线程几乎没有加速效果。
+在 Python 中，我们主要使用 `threading`（线程）来实现并发，使用 `multiprocessing`（进程）来实现并行。
 
 ### 📚 Level 1: 基础认知（30秒理解）
 
-让我们看看顺序执行和并发执行的直观区别。假设我们有两个任务，每个任务都需要1秒钟的“等待”（模拟I/O操作）。
+让我们用一个简单的“下载”任务来感受并发的威力。假设我们有两个下载任务，每个都需要2秒。串行执行总共需要4秒，而使用并发（线程），它们可以“同时”等待，总耗时约2秒。
 
 ```python
-import time
 import threading
+import time
 
-# --- 顺序执行 ---
-def sequential_run():
-    print("顺序执行开始...")
-    start_time = time.time()
-    
-    # 模拟两个独立的I/O任务
-    time.sleep(1)
-    time.sleep(1)
-    
-    end_time = time.time()
-    print(f"顺序执行耗时: {end_time - start_time:.2f} 秒")
+def fake_download(task_name):
+    """模拟一个需要等待I/O的任务"""
+    print(f"开始下载 {task_name}...")
+    time.sleep(2)  # 模拟网络延迟
+    print(f"{task_name} 下载完成!")
+
+# --- 串行执行 ---
+start_time = time.time()
+fake_download("文件A")
+fake_download("文件B")
+end_time = time.time()
+print(f"串行执行总耗时: {end_time - start_time:.2f} 秒\n")
 
 # --- 并发执行 ---
-def task(name):
-    # 这是一个模拟I/O等待的任务
-    time.sleep(1)
-    print(f"任务 {name} 完成")
+start_time = time.time()
+# 创建线程
+thread1 = threading.Thread(target=fake_download, args=("文件C",))
+thread2 = threading.Thread(target=fake_download, args=("文件D",))
 
-def concurrent_run():
-    print("\n并发执行开始...")
-    start_time = time.time()
-    
-    # 创建两个线程来执行任务
-    thread1 = threading.Thread(target=task, args=("A",))
-    thread2 = threading.Thread(target=task, args=("B",))
-    
-    thread1.start()
-    thread2.start()
-    
-    # 等待两个线程都执行完毕
-    thread1.join()
-    thread2.join()
-    
-    end_time = time.time()
-    print(f"并发执行耗时: {end_time - start_time:.2f} 秒")
+# 启动线程
+thread1.start()
+thread2.start()
 
+# 等待所有线程完成
+thread1.join()
+thread2.join()
 
-if __name__ == "__main__":
-    sequential_run()
-    concurrent_run()
+end_time = time.time()
+print(f"并发执行总耗时: {end_time - start_time:.2f} 秒")
 
-# 预期输出:
-# 顺序执行开始...
-# 顺序执行耗时: 2.00 秒
+# 预期输出结果:
+# 开始下载 文件A...
+# 文件A 下载完成!
+# 开始下载 文件B...
+# 文件B 下载完成!
+# 串行执行总耗时: 4.00 秒
 #
-# 并发执行开始...
-# 任务 A 完成
-# 任务 B 完成
-# 并发执行耗时: 1.00 秒
+# 开始下载 文件C...
+# 开始下载 文件D...
+# 文件C 下载完成!
+# 文件D 下载完成!
+# 并发执行总耗时: 2.01 秒
 ```
-**解读**：顺序执行总耗时是两个任务之和（1+1=2秒）。并发执行时，两个线程的等待时间发生了重叠，总耗时约等于最长的那个任务的耗时（1秒），效率显著提升。
 
 ### 📈 Level 2: 核心特性（深入理解）
 
-#### 特性1: `threading` 适用于 I/O 密集型任务
+#### 特性1: 线程 (Threading) - I/O 密集型任务的利器
 
-当你的程序需要同时与多个网络服务通信或读写多个文件时，使用多线程可以大幅提升效率。线程共享同一进程的内存空间，创建和切换的开销较小。
+线程是操作系统能够进行运算调度的最小单位。在 Python 中，由于全局解释器锁（GIL）的存在，同一时间只有一个线程能执行 Python 字节码。但这并不妨碍线程在处理 I/O 密集型任务时大放异彩。当一个线程等待 I/O 时（如 `time.sleep()`, 网络请求），GIL 会被释放，允许其他线程运行。
 
 ```python
 import threading
 import time
-import requests
+import requests # 需要安装: pip install requests
 
-def download_image(url):
-    """一个模拟下载图片的I/O密集型任务"""
-    print(f"开始下载: {url}")
-    # requests.get 是一个典型的I/O操作，大部分时间在等待网络响应
+urls = [
+    "https://www.google.com",
+    "https://www.python.org",
+    "https://www.github.com",
+]
+
+def fetch_url(url):
+    """一个典型的I/O密集型任务：请求网页"""
+    print(f"开始请求 {url}...")
     try:
         response = requests.get(url, timeout=5)
-        print(f"下载完成: {url}, 大小: {len(response.content)} 字节")
-    except requests.RequestException as e:
-        print(f"下载失败: {url}, 错误: {e}")
+        print(f"完成请求 {url}, 状态码: {response.status_code}")
+    except requests.exceptions.RequestException as e:
+        print(f"请求 {url} 失败: {e}")
 
-if __name__ == "__main__":
-    # 使用一个公共的图片API进行演示
-    image_urls = [
-        "https://picsum.photos/200/300" for _ in range(5)
-    ]
+# 使用线程处理多个网络请求
+start_time = time.time()
+threads = []
+for url in urls:
+    thread = threading.Thread(target=fetch_url, args=(url,))
+    threads.append(thread)
+    thread.start()
 
-    start_time = time.time()
-    threads = []
-    for url in image_urls:
-        # 为每个下载任务创建一个线程
-        thread = threading.Thread(target=download_image, args=(url,))
-        threads.append(thread)
-        thread.start()
+for thread in threads:
+    thread.join()
 
-    for thread in threads:
-        # 等待所有线程完成
-        thread.join()
-        
-    end_time = time.time()
-    print(f"\n使用多线程下载5张图片总耗时: {end_time - start_time:.2f} 秒")
-    
-# 预期输出 (时间会因网络状况而异):
-# 开始下载: https://picsum.photos/200/300
-# 开始下载: https://picsum.photos/200/300
-# 开始下载: https://picsum.photos/200/300
-# 开始下载: https://picsum.photos/200/300
-# 开始下载: https://picsum.photos/200/300
-# 下载完成: https://picsum.photos/200/300, 大小: 60000 字节
-# 下载完成: https://picsum.photos/200/300, 大小: 60000 字节
-# 下载完成: https://picsum.photos/200/300, 大小: 60000 字节
-# 下载完成: https://picsum.photos/200/300, 大小: 60000 字节
-# 下载完成: https://picsum.photos/200/300, 大小: 60000 字节
+end_time = time.time()
+print(f"\n使用线程处理 I/O 密集型任务，总耗时: {end_time - start_time:.2f} 秒")
+
+# 预期输出结果 (顺序可能不同):
+# 开始请求 https://www.google.com...
+# 开始请求 https://www.python.org...
+# 开始请求 https://www.github.com...
+# 完成请求 https://www.google.com, 状态码: 200
+# 完成请求 https://www.python.org, 状态码: 200
+# 完成请求 https://www.github.com, 状态码: 200
 #
-# 使用多线程下载5张图片总耗时: 0.85 秒
+# 使用线程处理 I/O 密集型任务，总耗时: 1.52 秒  (这个时间取决于你的网速，但会远小于三次请求时间的总和)
 ```
 
-#### 特性2: `multiprocessing` 适用于 CPU 密集型任务
+#### 特性2: 进程 (Multiprocessing) - CPU 密集型任务的救星
 
-当你的任务是进行大规模数学计算、数据处理等，需要CPU马力全开时，使用多进程是突破GIL限制、利用多核优势的唯一标准方法。
+进程是操作系统资源分配的基本单位。每个进程都有自己独立的内存空间和 Python 解释器，因此它们不受 GIL 的限制。这使得 `multiprocessing` 成为执行 CPU 密集型任务、真正利用多核优势的唯一标准库选择。
 
 ```python
 import multiprocessing
 import time
 
 def heavy_calculation(n):
-    """一个模拟CPU密集型任务"""
-    total = 0
+    """一个典型的CPU密集型任务：大量计算"""
+    print(f"开始计算 {n}...")
+    count = 0
     for i in range(n):
-        total += i * i
-    return total
+        count += i
+    print(f"计算 {n} 完成!")
+    return count
 
-if __name__ == "__main__":
-    # 在多进程代码中，**尤其是在 Windows 或 macOS 系统上**，主模块的保护（即 `if __name__ == "__main__":`）是必须的，
-    # 以避免子进程重复导入和执行主模块代码。在 Linux 系统上，虽然不是强制性的，但为了代码的可移植性，推荐始终使用。
-    
-    # 一个很大的数字，确保计算需要一定时间
-    number_to_calculate = 50_000_000
-
-    # --- 单进程计算 ---
-    start_time_single = time.time()
-    result_single = heavy_calculation(number_to_calculate)
-    end_time_single = time.time()
-    print(f"单进程计算耗时: {end_time_single - start_time_single:.2f} 秒")
-
-    # --- 多进程计算 ---
-    # 通常使用 CPU 核心数作为进程数
-    cpu_count = multiprocessing.cpu_count()
-    print(f"\n使用 {cpu_count} 个进程并行计算...")
-    start_time_multi = time.time()
+# 使用进程处理多个计算任务
+if __name__ == '__main__': # 在Windows/macOS上，multiprocessing必须放在这个block里
+    start_time = time.time()
     
     # 创建一个进程池
-    with multiprocessing.Pool(processes=cpu_count) as pool:
-        # 将任务分割成小块，分给不同进程
-        chunk_size = number_to_calculate // cpu_count
-        tasks = [chunk_size] * cpu_count
-        # map会阻塞直到所有任务完成
-        results = pool.map(heavy_calculation, tasks)
-        
-    end_time_multi = time.time()
-    print(f"多进程计算耗时: {end_time_multi - start_time_multi:.2f} 秒")
+    pool = multiprocessing.Pool(processes=2)
     
-# 预期输出 (在多核机器上，时间会显著缩短):
-# 单进程计算耗时: 2.15 秒
+    # 任务列表
+    tasks = [100_000_000, 100_000_001]
+    
+    # 异步提交任务
+    results = pool.map(heavy_calculation, tasks)
+    
+    pool.close() # 关闭进程池，不再接受新任务
+    pool.join()  # 等待所有子进程执行完毕
+    
+    end_time = time.time()
+    print(f"\n使用进程处理 CPU 密集型任务，总耗时: {end_time - start_time:.2f} 秒")
+
+# 预期输出结果 (在双核或以上CPU上):
+# 开始计算 100000000...
+# 开始计算 100000001...
+# 计算 100000000 完成!
+# 计算 100000001 完成!
 #
-# 使用 8 个进程并行计算...
-# 多进程计算耗时: 0.53 秒
+# 使用进程处理 CPU 密集型任务，总耗时: 3.51 秒 (这个时间大约是单个任务的耗时，而不是两倍)
 ```
 
 ### 🔍 Level 3: 对比学习（避免陷阱）
 
 **陷阱：误用 `threading` 处理 CPU 密集型任务**
 
-由于GIL的存在，在CPython中用多线程执行纯计算任务，不仅不会变快，反而会因为线程创建和切换的开销而变得更慢。
+由于 GIL 的存在，使用多线程执行纯计算任务，不仅不会变快，反而会因为线程创建、切换和锁竞争的开销而变得更慢！
 
 ```python
 import threading
+import multiprocessing
 import time
 
-def cpu_bound_task(n):
+def cpu_bound_task():
     """一个纯计算任务"""
-    while n > 0:
-        n -= 1
+    count = 0
+    for _ in range(100_000_000):
+        count += 1
 
 # === 错误用法 ===
-# ❌ 尝试用多线程加速CPU密集型任务
-def run_with_threads():
-    count = 100_000_000
-    thread1 = threading.Thread(target=cpu_bound_task, args=(count // 2,))
-    thread2 = threading.Thread(target=cpu_bound_task, args=(count // 2,))
-    
-    start = time.time()
-    thread1.start()
-    thread2.start()
-    thread1.join()
-    thread2.join()
-    end = time.time()
-    print(f"❌ 多线程耗时: {end - start:.4f} 秒")
-
+# ❌ 尝试用多线程加速计算，结果适得其反
+print("--- 错误用法：多线程处理CPU密集型任务 ---")
+start_time = time.time()
+thread1 = threading.Thread(target=cpu_bound_task)
+thread2 = threading.Thread(target=cpu_bound_task)
+thread1.start()
+thread2.start()
+thread1.join()
+thread2.join()
+end_time = time.time()
+print(f"多线程耗时: {end_time - start_time:.2f} 秒")
 # 解释为什么是错的:
-# GIL锁导致两个线程无法在两个CPU核心上并行执行Python代码。
-# 它们实际上在单个核心上交替运行，并且线程切换本身还带来了额外的开销。
-# 结果就是比单线程还要慢。
+# GIL 强制同一时刻只有一个线程能执行Python代码。
+# 两个线程为了争夺GIL会产生额外的开销，导致总时间比单个线程执行两次还要长。
+
 
 # === 正确用法 ===
-# ✅ 使用单线程（或多进程）来处理CPU密集型任务
-def run_sequentially():
-    count = 100_000_000
-    start = time.time()
-    cpu_bound_task(count)
-    end = time.time()
-    print(f"✅ 单线程耗时: {end - start:.4f} 秒 (作为基准)")
-
-# 解释为什么这样是对的:
-# 对于纯计算任务，单线程直接执行是最简单高效的方式（在不使用多进程的情况下）。
-# 要想真正利用多核，应该使用 `multiprocessing` 模块（如Level 2所示），
-# 它会创建独立的进程，从而绕过GIL的限制。
-
+# ✅ 使用多进程绕过GIL，实现真正的并行计算
+print("\n--- 正确用法：多进程处理CPU密集型任务 ---")
 if __name__ == '__main__':
-    run_sequentially()
-    run_with_threads()
+    start_time = time.time()
+    process1 = multiprocessing.Process(target=cpu_bound_task)
+    process2 = multiprocessing.Process(target=cpu_bound_task)
+    process1.start()
+    process2.start()
+    process1.join()
+    process2.join()
+    end_time = time.time()
+    print(f"多进程耗时: {end_time - start_time:.2f} 秒")
+# 解释为什么这样是对的:
+# 每个进程都有自己的Python解释器和GIL，它们可以在不同的CPU核心上并行执行，
+# 从而将总耗时减少到接近单个任务的耗时（在多核CPU上）。
 
-# 预期输出 (多线程版本会比单线程慢):
-# ✅ 单线程耗时: 3.5123 秒 (作为基准)
-# ❌ 多线程耗时: 3.6890 秒
+# 预期输出 (在一个至少双核的机器上):
+# --- 错误用法：多线程处理CPU密集型任务 ---
+# 多线程耗时: 9.85 秒  (比单个任务的耗时 * 2 还要慢)
+#
+# --- 正确用法：多进程处理CPU密集型任务 ---
+# 多进程耗时: 5.12 秒  (接近单个任务的耗时，实现了加速)
 ```
 
 ### 🚀 Level 4: 实战应用（真实场景）
 
-**场景：** 🤖 机器人餐厅上菜系统
+**场景：** 🚀 星际矿物分析站
 
-在一个未来主义的机器人餐厅，一个超级厨师能瞬间做好所有菜。但送餐机器人把菜从厨房送到餐桌需要时间（这是一个典型的I/O密集型任务，因为机器人在“移动”，CPU是空闲的）。我们需要一个高效的系统来调度机器人，让所有客人的菜能尽快送达。
+我们的太空探测器发回了来自不同行星的矿物样本数据。分析站需要完成两项主要工作：
+1.  **下载数据 (I/O 密集型)**: 从遥远的行星中继站下载地质扫描数据，网络延迟很高。
+2.  **分析成分 (CPU 密集型)**: 对下载的数据进行复杂的算法分析，找出稀有元素。
+
+我们将设计一个高效的分析流程，结合使用 `threading` 和 `multiprocessing` 来最大化效率。
 
 ```python
+import threading
+import multiprocessing
 import time
 import random
-from concurrent.futures import ThreadPoolExecutor
 
-# 菜品和制作时间（假设厨师瞬间做好）
-MENU = {
-    "赛博坦烤鸡": 0.1,
-    "引力场拉面": 0.2,
-    "量子纠缠披萨": 0.3,
-    "暗物质甜甜圈": 0.15
-}
+def download_data(planet_name):
+    """(I/O密集型) 模拟从行星下载数据"""
+    print(f"🛰️ [I/O线程] 开始从 {planet_name} 下载数据...")
+    time.sleep(random.uniform(2, 4)) # 模拟高网络延迟
+    data_packet = f"来自 {planet_name} 的原始数据包"
+    print(f"✅ [I/O线程] {planet_name} 数据下载完毕!")
+    return data_packet
 
-def deliver_order(order_id, dish_name):
-    """
-    模拟机器人送餐过程
-    这是一个I/O密集型任务
-    """
-    print(f"🤖 订单 {order_id}: {dish_name} 已出餐，机器人开始派送...")
+def analyze_composition(data_packet):
+    """(CPU密集型) 模拟分析矿物成分"""
+    print(f"🔬 [CPU进程] 开始分析 '{data_packet}'...")
+    # 模拟复杂的计算
+    n = 80_000_000
+    _ = sum(i * i for i in range(n))
+    result = f"分析结果: 在 '{data_packet}' 中发现超能量晶体!"
+    print(f"💎 [CPU进程] '{data_packet}' 分析完成!")
+    return result
+
+if __name__ == '__main__':
+    planets = ["火星", "木卫二", "泰坦星"]
     
-    # 模拟送餐到不同餐桌所需的时间
-    delivery_time = random.uniform(1.0, 3.0)
-    time.sleep(delivery_time)
-    
-    print(f"✅ 订单 {order_id}: {dish_name} 已送达! (耗时 {delivery_time:.2f} 秒)")
-    return f"订单 {order_id} 完成"
+    print("--- 启动星际矿物分析站 ---")
+    start_total_time = time.time()
 
-def run_restaurant(max_robots):
-    """
-    运营餐厅，使用一个机器人池（线程池）来处理订单
-    """
-    orders = [(i, random.choice(list(MENU.keys()))) for i in range(1, 11)]
-    print(f"餐厅开业！接到 {len(orders)} 个订单。我们有 {max_robots} 个送餐机器人。\n")
+    # --- Step 1: 使用线程池并发下载所有数据 ---
+    print("\n--- [阶段一] 并发下载行星数据 ---")
+    download_threads = []
+    downloaded_data = [None] * len(planets)
 
-    start_time = time.time()
+    # 我们需要一个辅助函数来将结果存入列表
+    def download_wrapper(index, planet):
+        downloaded_data[index] = download_data(planet)
+
+    for i, planet in enumerate(planets):
+        thread = threading.Thread(target=download_wrapper, args=(i, planet))
+        download_threads.append(thread)
+        thread.start()
+
+    for thread in download_threads:
+        thread.join()
     
-    # ThreadPoolExecutor 是一个高级的线程管理器
-    # 它会自动管理线程的创建和复用
-    with ThreadPoolExecutor(max_workers=max_robots) as executor:
-        # submit 方法会立即返回一个 future 对象，代表未来的结果
-        futures = [executor.submit(deliver_order, order_id, dish_name) for order_id, dish_name in orders]
+    print("\n--- [阶段一] 所有数据下载完成! ---")
+    print("收到的数据包:", downloaded_data)
+
+    # --- Step 2: 使用进程池并行分析数据 ---
+    print("\n--- [阶段二] 并行分析矿物成分 ---")
+    # 使用与CPU核心数匹配的进程数，或者根据需要调整
+    num_processes = min(multiprocessing.cpu_count(), len(downloaded_data))
+    with multiprocessing.Pool(processes=num_processes) as pool:
+        analysis_results = pool.map(analyze_composition, downloaded_data)
+    
+    print("\n--- [阶段二] 所有分析工作完成! ---")
+    print("最终分析报告:")
+    for report in analysis_results:
+        print(f"- {report}")
         
-        # 等待所有任务完成并获取结果
-        for future in futures:
-            try:
-                result = future.result() # .result() 会阻塞直到该任务完成
-                # print(f"系统日志: {result}")
-            except Exception as e:
-                print(f"🚨 订单处理失败: {e}")
-                
-    end_time = time.time()
-    print(f"\n🎉 所有订单已送达！总耗时: {end_time - start_time:.2f} 秒")
+    end_total_time = time.time()
+    print(f"\n✨ 任务完成！总耗时: {end_total_time - start_total_time:.2f} 秒")
 
-if __name__ == "__main__":
-    # 假设我们有5个送餐机器人（相当于5个工作线程）
-    run_restaurant(max_robots=5)
-
-# 预期输出 (总耗时远小于所有订单耗时之和):
-# 餐厅开业！接到 10 个订单。我们有 5 个送餐机器人。
+# 预期输出 (顺序和时间可能略有不同):
+# --- 启动星际矿物分析站 ---
 #
-# 🤖 订单 1: 暗物质甜甜圈 已出餐，机器人开始派送...
-# 🤖 订单 2: 赛博坦烤鸡 已出餐，机器人开始派送...
-# 🤖 订单 3: 量子纠缠披萨 已出餐，机器人开始派送...
-# 🤖 订单 4: 赛博坦烤鸡 已出餐，机器人开始派送...
-# 🤖 订单 5: 引力场拉面 已出餐，机器人开始派送...
-# ✅ 订单 2: 赛博坦烤鸡 已送达! (耗时 1.34 秒)
-# 🤖 订单 6: 引力场拉面 已出餐，机器人开始派送...
-# ✅ 订单 1: 暗物质甜甜圈 已送达! (耗时 1.87 秒)
-# 🤖 订单 7: 赛博坦烤鸡 已出餐，机器人开始派送...
-# ... (中间输出会交错出现) ...
-# ✅ 订单 10: 量子纠缠披萨 已送达! (耗时 2.89 秒)
+# --- [阶段一] 并发下载行星数据 ---
+# 🛰️ [I/O线程] 开始从 火星 下载数据...
+# 🛰️ [I/O线程] 开始从 木卫二 下载数据...
+# 🛰️ [I/O线程] 开始从 泰坦星 下载数据...
+# ✅ [I/O线程] 火星 数据下载完毕!
+# ✅ [I/O线程] 泰坦星 数据下载完毕!
+# ✅ [I/O线程] 木卫二 数据下载完毕!
 #
-# 🎉 所有订单已送达！总耗时: 5.83 秒
+# --- [阶段一] 所有数据下载完成! ---
+# 收到的数据包: ['来自 火星 的原始数据包', '来自 木卫二 的原始数据包', '来自 泰坦星 的原始数据包']
+#
+# --- [阶段二] 并行分析矿物成分 ---
+# 🔬 [CPU进程] 开始分析 '来自 火星 的原始数据包'...
+# 🔬 [CPU进程] 开始分析 '来自 木卫二 的原始数据包'...
+# 🔬 [CPU进程] 开始分析 '来自 泰坦星 的原始数据包'...
+# 💎 [CPU进程] '来自 火星 的原始数据包' 分析完成!
+# 💎 [CPU进程] '来自 泰坦星 的原始数据包' 分析完成!
+# 💎 [CPU进程] '来自 木卫二 的原始数据包' 分析完成!
+#
+# --- [阶段二] 所有分析工作完成! ---
+# 最终分析报告:
+# - 分析结果: 在 '来自 火星 的原始数据包' 中发现超能量晶体!
+# - 分析结果: 在 '来自 木卫二 的原始数据包' 中发现超能量晶体!
+# - 分析结果: 在 '来自 泰坦星 的原始数据包' 中发现超能量晶体!
+#
+# ✨ 任务完成！总耗时: 8.59 秒 (远小于所有任务串行执行时间的总和)
 ```
 
 ### 💡 记忆要点
-
-- **要点1**: **并发是管理，并行是执行**。并发是在逻辑上同时处理多件事（单核也能做到），并行是在物理上同时做多件事（需要多核）。
-- **要点2**: **任务定乾坤**。I/O密集型任务（如网络、文件）首选`threading`，因为它能有效利用等待时间。CPU密集型任务（如科学计算）必须用`multiprocessing`，以突破GIL限制，发挥多核威力。
-- **要点3**: **GIL是关键**。全局解释器锁（GIL）是CPython的特性，它使得多线程无法真正并行执行CPU密集型代码。这是选择`multiprocessing`而非`threading`来加速计算的根本原因。
+- **要点1**: **并发是“看起来同时”，并行是“真正同时”**。并发通过任务切换实现，单核即可；并行需要多核CPU支持。
+- **要点2**: **任务类型决定工具选型**。遇到网络请求、文件读写等 I/O 密集型任务，优先选择 `threading`；遇到科学计算、数据处理等 CPU 密集型任务，必须使用 `multiprocessing`。
+- **要点3**: **GIL 是核心限制**。Python 的全局解释器锁（GIL）是 `threading` 无法利用多核进行并行计算的根本原因。`multiprocessing` 通过创建独立进程，每个进程拥有自己的 GIL，从而绕开了这个限制。
