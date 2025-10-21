@@ -2,12 +2,14 @@
 
 import { useEffect, useId, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, NotebookPen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useThemeGeneratorStore, GenerationStage } from "@/store/themeGeneratorStore";
 import {
   Popover,
@@ -228,46 +230,68 @@ const DebugStageSelector = () => {
 
 const IdleView = () => {
   const { themeName, generationStyle, content, setFormField, startOutlineGeneration, isSubscribing } = useThemeGeneratorStore();
-  const isGenerating = isSubscribing;
 
   return (
     <div className="flex flex-col">
       <h4 className="font-medium text-lg leading-relaxed">生成学习主题</h4>
-      <div className="border-t space-y-2 pt-3 mt-3 ">
-      <p className="text-xs text-muted-foreground">输入主题名称与偏好，先生成可预览的大纲</p>
-
-        <Input
-          placeholder="主题名称（如：React 深入浅出）"
-          value={themeName}
-          onChange={(e) => setFormField('themeName', e.target.value)}
-          className="h-8 text-sm"
-        />
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            variant={generationStyle === 'principle' ? 'default' : 'outline'}
-            onClick={() => setFormField('generationStyle', 'principle')}
-            className={cn("h-8 text-xs", generationStyle === 'principle' && "bg-primary")}
-          >原理学习</Button>
-          <Button
-            variant={generationStyle === 'preview' ? 'default' : 'outline'}
-            onClick={() => setFormField('generationStyle', 'preview')}
-            className={cn("h-8 text-xs", generationStyle === 'preview' && "bg-primary")}
-          >深度预习</Button>
+      <p className="text-xs text-muted-foreground mt-1">输入主题名称与偏好，以生成可供预览的大纲。</p>
+      
+      <div className="border-t pt-4 mt-4 space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="themeName">主题名称</Label>
+          <Input
+            id="themeName"
+            placeholder="例如：React 深入浅出"
+            value={themeName}
+            onChange={(e) => setFormField('themeName', e.target.value)}
+            className="h-9 text-sm"
+          />
         </div>
-        <Textarea
-          placeholder="描述想学习的内容..."
-          value={content}
-          onChange={(e) => setFormField('content', e.target.value)}
-          className="min-h-[60px] text-sm resize-none"
-        />
-      </div>
-      <div className="flex">
-        <Button
-          variant="outline"
-          onClick={startOutlineGeneration}
-          className="flex-1 h-8 text-sm hover:bg-primary hover:text-primary-foreground mt-3"
-          disabled={!themeName.trim() || !content.trim() || isGenerating}
-        >开始生成大纲</Button>
+
+        <div className="space-y-1.5">
+          <Label>学习风格</Label>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            value={generationStyle}
+            onValueChange={(value) => {
+              if (value) setFormField('generationStyle', value as 'principle' | 'preview');
+            }}
+          >
+            <ToggleGroupItem value="principle" aria-label="原理学习" className="h-9 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
+              原理学习
+            </ToggleGroupItem>
+            <ToggleGroupItem value="preview" aria-label="深度预习" className="h-9 text-xs data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
+              深度预习
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="content">具体要求</Label>
+          <Textarea
+            id="content"
+            placeholder="可以描述希望包含的具体知识点、希望达到的学习深度等..."
+            value={content}
+            onChange={(e) => setFormField('content', e.target.value)}
+            className="min-h-[80px] text-sm resize-none"
+          />
+        </div>
+
+        <div>
+          <Button
+            onClick={startOutlineGeneration}
+            className="w-full h-10"
+            disabled={!themeName.trim() || !content.trim() || isSubscribing}
+          >
+            {isSubscribing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <NotebookPen className="h-4 w-4" />
+            )}
+            开始生成大纲
+          </Button>
+        </div>
       </div>
     </div>
   );
