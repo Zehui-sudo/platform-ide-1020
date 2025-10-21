@@ -6,7 +6,7 @@ import { broadcast, createJob, finishJob, JobRecord, updateStage } from './jobMa
 export interface GenerateContentParams {
   inputPath: string; // integrated JSON path
   selectedChapters?: string; // e.g., "1,3-4"
-  debug?: boolean;
+  debug?: boolean; // enable script's own debug logging
 }
 
 function repoRoot(): string {
@@ -105,7 +105,14 @@ export async function startChapters(params: GenerateContentParams) {
   if (params.selectedChapters && params.selectedChapters.trim()) {
     args.push('--selected-chapters', params.selectedChapters.trim());
   }
-  if (params.debug) args.push('--debug');
+  if (params.debug || process.env.PIPELINE_LOG === '1') args.push('--debug');
+
+  // 设置脚本内置日志路径（仅在 --debug 时有效）
+  const slug = meta.topicSlug || 'topic';
+  const dbgLogDir = path.join(repoRoot(), 'output', slug);
+  await fs.mkdir(dbgLogDir, { recursive: true }).catch(() => {});
+  const dbgLogPath = path.join(dbgLogDir, 'log.txt');
+  job.logPath = dbgLogPath;
 
   const child = spawn(py, args, { cwd: repoRoot(), env: process.env });
   job.pid = child.pid;
@@ -114,6 +121,8 @@ export async function startChapters(params: GenerateContentParams) {
   updateStage(job, 'content', { status: 'running', detail: '启动脚本中…' });
   broadcast(job, 'log', { line: `[orchestrator] spawn: ${py} ${args.join(' ')}` });
   broadcast(job, 'log', { line: `[orchestrator] cwd: ${repoRoot()}` });
+  // 提前广播日志文件位置（脚本内置 log）
+  broadcast(job, 'file', { logPath: dbgLogPath });
 
   child.on('spawn', () => {
     broadcast(job, 'log', { line: `[orchestrator] process started (pid=${child.pid})` });
@@ -152,4 +161,3 @@ export async function startChapters(params: GenerateContentParams) {
 
   return job;
 }
-

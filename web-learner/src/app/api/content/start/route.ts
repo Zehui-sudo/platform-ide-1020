@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
     const refJobId: string | undefined = body?.refJobId ? String(body.refJobId) : undefined;
     let inputPath: string | undefined = body?.inputPath ? String(body.inputPath) : undefined;
     const selectedChapters: string | undefined = body?.selectedChapters ? String(body.selectedChapters) : undefined;
-    const debug: boolean = Boolean(body?.debug ?? false);
+    // 默认开启 debug，确保脚本按自身机制记录日志到 output/<slug>/log.txt
+    const debug: boolean = Boolean(body?.debug ?? true);
 
     if (!inputPath && refJobId) {
       const ref = getJob(refJobId);
@@ -46,4 +47,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });
   }
 }
-

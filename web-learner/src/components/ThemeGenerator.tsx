@@ -364,7 +364,7 @@ export function ThemeGenerator() {
                       const res = await fetch('/api/content/start', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ refJobId: jobId }), // 默认全部章节
+                        body: JSON.stringify({ refJobId: jobId, debug: true }), // 默认全部章节，开启脚本内置日志
                       });
                       if (!res.ok) throw new Error(`启动内容生成失败: ${res.status}`);
                       const { jobId: cJobId } = await res.json();
