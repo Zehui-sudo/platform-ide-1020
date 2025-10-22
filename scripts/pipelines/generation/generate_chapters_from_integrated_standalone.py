@@ -13,7 +13,7 @@
 
 用法示例：
   python scripts/pipelines/generation/generate_chapters_from_integrated_standalone.py \
-    --input output/integrated_pipeline/web-media-encryption-integrated-20251020-220924.json \
+    --input output/integrated_pipeline/computer-network-principles-integrated-20251022-204538.json \
     --config config.json \
     --skip-content-review \
     --selected-chapters 1,2 \
