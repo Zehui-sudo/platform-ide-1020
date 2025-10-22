@@ -18,11 +18,10 @@
 
   - 只跑教材推荐+目录抓取：
     python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
+    --stage toc \
     --subject "Web媒体加密" \
     --top-n 3 \
     --print-prompt \
-    --stream \
-    --learning-style principles \
     --expected-content "主流流媒体平台视频分发的加密方式，如何防止恶意下载" \
     --log
 
@@ -33,16 +32,15 @@
     --expected-content "主流流媒体平台视频分发的加密方式，如何防止恶意下载" \
     --learning-style deep_preview \
     --print-prompt \
-    --subject-type theory\
     --stream
 
   全流程
     python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
     --stage full \
-    --subject "Web媒体加密" \
+    --subject "计算机网络原理" \
     --top-n 3 \
     --learning-style principles \
-    --expected-content "主流流媒体平台视频分发的加密方式，如何防止恶意下载" \
+    --expected-content "在学习的最后能够清楚VPN工作的原理" \
     --print-prompt
 """
 

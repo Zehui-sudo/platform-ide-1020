@@ -254,7 +254,15 @@ class LLM:
                         self.last_info = {"finish_reasons": finish_reasons}
                     if all(_is_stop_reason(fr) for fr in finish_reasons):
                         break
-                    raise RuntimeError(f"Gemini 流式输出中断: finish_reason={finish_reasons}")
+                    # finish_reason=0 (UNSPECIFIED) 表示继续等待后续 chunk，不应视为错误
+                    normalized: list[int] = []
+                    for fr in finish_reasons:
+                        try:
+                            normalized.append(int(fr))
+                        except Exception:
+                            normalized.append(-1)
+                    if any(val not in (0, 1, -1) for val in normalized):
+                        raise RuntimeError(f"Gemini 流式输出中断: finish_reason={finish_reasons}")
 
         else:
             raise RuntimeError(f"Unknown provider for streaming: {self._provider}")
