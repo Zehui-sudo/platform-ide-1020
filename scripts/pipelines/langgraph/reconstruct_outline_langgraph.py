@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
@@ -161,6 +162,11 @@ def _prepare_materials(input_obj: Dict[str, Any], limit: int = 3) -> Dict[str, A
     return {"subject": subject, "materials": items}
 
 
+def prepare_materials_from_tocs(subject: str, tocs: List[Dict[str, Any]], limit: int = 3) -> Dict[str, Any]:
+    """根据 TOC 列表构造 Prompt 所需的精简材料结构。"""
+    return _prepare_materials({"subject": subject, "tocs": tocs}, limit=limit)
+
+
 # -----------------------------
 # 分类：theory / tool
 # -----------------------------
@@ -183,6 +189,171 @@ def classify_subject(subject: str, llm: LLMCaller) -> str:
     if ans in {"tool", "theory"}:
         return ans
     return f"error: unexpected classifier output: {ans!r}"
+
+
+@dataclass
+class ReconstructOutlineResult:
+    outline: Dict[str, Any]
+    subject_type: str
+    learning_style: str
+    prompt: str
+    raw_response: str
+    llm_info: Dict[str, Any]
+
+
+def _normalize_learning_style(style: Optional[str]) -> str:
+    val = (style or "").strip().lower()
+    mapping = {
+        "principles": "principles",
+        "原理学习": "principles",
+        "deep_preview": "deep_preview",
+        "深度预习": "deep_preview",
+    }
+    normalized = mapping.get(val, mapping.get(style or "", ""))
+    if normalized:
+        return normalized
+    if not style:
+        return "principles"
+    raise ValueError("学习风格需为 principles/deep_preview 或 对应中文：原理学习/深度预习")
+
+
+def _describe_llm(llm: Any, key_hint: Optional[str]) -> Dict[str, Any]:
+    """提取 LLM 的关键信息，便于日志记录。"""
+    info: Dict[str, Any] = {}
+    if key_hint:
+        info["key"] = key_hint
+    cfg = getattr(llm, "_cfg", None)
+    if cfg:
+        info.setdefault("provider", getattr(cfg, "provider", None))
+        info.setdefault("model", getattr(cfg, "model", None))
+        info.setdefault("temperature", getattr(cfg, "temperature", None))
+        info.setdefault("max_tokens", getattr(cfg, "max_tokens", None))
+    return {k: v for k, v in info.items() if v is not None}
+
+
+def run_reconstruct_outline(
+    subject: str,
+    *,
+    materials: Dict[str, Any],
+    cfg: Optional[Dict[str, Any]] = None,
+    reconstruct_llm_key: Optional[str] = None,
+    classifier_llm_key: Optional[str] = None,
+    subject_type: Optional[str] = None,
+    learning_style: Optional[str] = None,
+    expected_content: Optional[str] = None,
+    subject_slug: Optional[str] = None,
+    print_prompt: bool = False,
+    stream: bool = False,
+    max_tokens: Optional[int] = None,
+    logger: Optional[logging.Logger] = None,
+) -> ReconstructOutlineResult:
+    """执行大纲重构阶段，返回结构化结果。"""
+    cfg = cfg or _load_config(CONFIG_PATH)
+    logger = logger or logging.getLogger(__name__)
+
+    node_llm_cfg = cfg.get("node_llm") or {}
+
+    registry = build_llm_registry(cfg)
+
+    target_reconstruct_key = reconstruct_llm_key
+    if not target_reconstruct_key:
+        val = node_llm_cfg.get("reconstruct_outline")
+        if isinstance(val, str):
+            target_reconstruct_key = val
+    caller = pick_llm(cfg, registry, target_reconstruct_key)
+
+    prefer_cls_key = classifier_llm_key
+    if prefer_cls_key is None:
+        val = node_llm_cfg.get("classify_subject")
+        if isinstance(val, str):
+            prefer_cls_key = val
+    classifier = pick_llm(cfg, registry, prefer_cls_key)
+
+    norm_style = _normalize_learning_style(learning_style)
+    expected_clean = (expected_content or "").strip()
+
+    if subject_type:
+        final_subject_type = subject_type.strip().lower()
+    else:
+        final_subject_type = classify_subject(subject, classifier)
+        if final_subject_type not in ("theory", "tool"):
+            raise RuntimeError(f"主题分类失败: {final_subject_type}")
+    logger.info("主题分类: %s → %s", subject, final_subject_type)
+    print(f"[信息] 主题分类结果: {subject} → {final_subject_type}", file=sys.stderr)
+
+    materials_obj = materials or {"subject": subject, "materials": []}
+    usable_materials = []
+    for item in materials_obj.get("materials", []) or []:
+        if isinstance(item, dict) and not item.get("error"):
+            usable_materials.append(item)
+    if len(usable_materials) == 0:
+        raise ValueError("无有效教材目录，无法进行大纲重构。")
+
+    prompt = build_prompt(
+        subject,
+        materials_obj,
+        final_subject_type,
+        learning_style=norm_style,
+        expected_content=expected_clean or None,
+    )
+    if print_prompt:
+        print("========== DEBUG: Prompt Begin ==========", file=sys.stderr)
+        print(prompt, file=sys.stderr)
+        print("=========== DEBUG: Prompt End ===========", file=sys.stderr)
+
+    max_tokens_arg = None if (max_tokens is None or max_tokens <= 0) else max_tokens
+    try:
+        if stream:
+            print("[信息] 正在以流式方式接收模型输出…", file=sys.stderr)
+            buf: List[str] = []
+            for piece in caller.stream_complete(prompt, max_tokens=max_tokens_arg):
+                buf.append(piece)
+                print(piece, end="", file=sys.stderr, flush=True)
+            print("", file=sys.stderr)
+            raw = "".join(buf)
+        else:
+            raw = caller.complete(prompt, max_tokens=max_tokens_arg)
+    except Exception as e:
+        raise RuntimeError(f"LLM 调用失败: {type(e).__name__}: {e}") from e
+
+    try:
+        info = getattr(caller, "last_info", None) or {}
+        if info:
+            logger.debug("LLM 完成信息: %s", info)
+    except Exception:
+        pass
+
+    try:
+        output_obj = _extract_json(raw)
+    except Exception as e:
+        raise RuntimeError(f"解析 LLM 输出失败: {e}") from e
+
+    # 注入 meta 数据
+    try:
+        if isinstance(output_obj, dict):
+            meta = output_obj.get("meta")
+            if not isinstance(meta, dict):
+                meta = {}
+            meta.setdefault("subject", subject)
+            meta.setdefault("subject_type", final_subject_type)
+            meta.setdefault("learning_style", norm_style)
+            if expected_content is not None:
+                meta.setdefault("expected_content", expected_clean)
+            if subject_slug:
+                meta.setdefault("subject_slug", subject_slug)
+                meta.setdefault("topic_slug", subject_slug)
+            output_obj["meta"] = meta
+    except Exception:
+        pass
+
+    return ReconstructOutlineResult(
+        outline=output_obj,
+        subject_type=final_subject_type,
+        learning_style=norm_style,
+        prompt=prompt,
+        raw_response=raw,
+        llm_info=_describe_llm(caller, reconstruct_llm_key),
+    )
 
 
 # -----------------------------
@@ -215,118 +386,33 @@ def main(argv: Optional[List[str]] = None) -> int:
         in_path = cands[0]
 
     input_obj = _load_toc_input(in_path)
-    subject = str(input_obj.get("subject"))
+    subject = str(input_obj.get("subject") or "")
     materials = _prepare_materials(input_obj, limit=3)
 
     cfg = _load_config(args.config)
-    # 规范化/校验学习风格
-    def _normalize_style(s: Optional[str]) -> str:
-        val = (s or "").strip().lower()
-        mapping = {
-            "principles": "principles",
-            "原理学习": "principles",
-            "deep_preview": "deep_preview",
-            "深度预习": "deep_preview",
-        }
-        return mapping.get(val, mapping.get(s or "", ""))
+    subject_slug = (input_obj.get("subject_slug") or "").strip() or None
+    logger = logging.getLogger(__name__)
 
-    norm_style = _normalize_style(args.learning_style)
-    if norm_style not in ("principles", "deep_preview"):
-        print("[错误] --learning-style 必须为 principles/deep_preview 或 对应中文：原理学习/深度预习", file=sys.stderr)
-        return 2
-    registry = build_llm_registry(cfg)
-    caller = pick_llm(cfg, registry, args.llm_key)
-
-    # 分类模型（优先 node_llm.classify_subject，再退回 CLI，再退回 default）
-    node_llm = cfg.get("node_llm") or {}
-    prefer_cls_key = None
-    if isinstance(node_llm, dict):
-        val = node_llm.get("classify_subject")
-        if isinstance(val, str):
-            prefer_cls_key = val
-    if args.classifier_llm_key:
-        prefer_cls_key = args.classifier_llm_key
-    classifier = pick_llm(cfg, registry, prefer_cls_key)
-
-    # 决定 subject_type
-    if args.subject_type:
-        subject_type = args.subject_type
-    else:
-        subject_type = classify_subject(subject, classifier)
-        if subject_type not in ("theory", "tool"):
-            print(f"[错误] 主题分类失败: {subject_type}", file=sys.stderr)
-            return 3
-    print(f"[信息] 主题分类结果: {subject} → {subject_type}", file=sys.stderr)
-
-    # 组装 prompt 并调用 LLM（根据主题类型 + 学习风格路由；tool 分支忽略风格）
-    prompt = build_prompt(
-        subject,
-        materials,
-        subject_type,
-        learning_style=norm_style,
-        expected_content=(args.expected_content or "").strip() or None,
-    )
-    if args.print_prompt:
-        print("========== DEBUG: Prompt Begin ==========", file=sys.stderr)
-        print(prompt, file=sys.stderr)
-        print("=========== DEBUG: Prompt End ===========", file=sys.stderr)
-    if args.stream:
-        print("[信息] 正在以流式方式接收模型输出…", file=sys.stderr)
-        buf: List[str] = []
-        try:
-            for piece in caller.stream_complete(prompt, max_tokens=args.max_tokens):
-                buf.append(piece)
-                # 实时打印到 stderr，不干扰最终文件输出
-                print(piece, end="", file=sys.stderr, flush=True)
-        except Exception as e:
-            print("[错误] LLM 流式调用失败:", f"{type(e).__name__}: {e}", file=sys.stderr)
-            return 1
-        print("", file=sys.stderr)  # 换行
-        raw = "".join(buf)
-    else:
-        try:
-            raw = caller.complete(prompt, max_tokens=args.max_tokens)
-        except Exception as e:
-            print("[错误] LLM 调用失败:", f"{type(e).__name__}: {e}", file=sys.stderr)
-            return 1
-
-    # 如有完成原因/拦截信息，输出提示（便于诊断截断/安全拦截）
     try:
-        info = getattr(caller, "last_info", None) or {}
-        if info:
-            print(f"[调试] LLM 完成信息: {info}", file=sys.stderr)
-    except Exception:
-        pass
-    try:
-        output_obj = _extract_json(raw)
+        outcome = run_reconstruct_outline(
+            subject=subject,
+            materials=materials,
+            cfg=cfg,
+            reconstruct_llm_key=args.llm_key,
+            classifier_llm_key=args.classifier_llm_key,
+            subject_type=args.subject_type,
+            learning_style=args.learning_style,
+            expected_content=args.expected_content,
+            subject_slug=subject_slug,
+            print_prompt=args.print_prompt,
+            stream=args.stream,
+            max_tokens=args.max_tokens,
+            logger=logger,
+        )
     except Exception as e:
-        print("[错误] 解析 LLM 输出失败（已包含具体原因）:", e, file=sys.stderr)
-        print("[建议] 可使用 --print-prompt 或 --stream 以诊断提示词与响应。", file=sys.stderr)
+        print(f"[错误] {e}", file=sys.stderr)
         return 1
 
-    # 注入元数据：记录主题与分类（用于后续内容生成分叉）
-    try:
-        if isinstance(output_obj, dict):
-            meta = output_obj.get("meta")
-            if not isinstance(meta, dict):
-                meta = {}
-            meta.setdefault("subject", subject)
-            meta.setdefault("subject_type", subject_type)
-            meta.setdefault("learning_style", norm_style)
-            if args.expected_content is not None:
-                meta.setdefault("expected_content", (args.expected_content or "").strip())
-            # 若上游输入包含 subject_slug，也写入，便于后续链路使用
-            try:
-                in_slug = (input_obj.get("subject_slug") or "").strip()
-                if in_slug:
-                    meta.setdefault("subject_slug", in_slug)
-            except Exception:
-                pass
-            output_obj["meta"] = meta
-    except Exception:
-        pass
-
-    # 输出位置
     if args.out:
         out_path = Path(args.out)
     else:
@@ -334,15 +420,24 @@ def main(argv: Optional[List[str]] = None) -> int:
         out_dir.mkdir(parents=True, exist_ok=True)
         # 优先使用输入 JSON 的 subject_slug；
         # 若缺失则基于 subject 生成 slug（回退为 'subject' 以避免历史固定前缀）。
-        in_slug = (input_obj.get("subject_slug") or "").strip()
-        slug = in_slug or _slugify(subject or "", "subject")
+        slug = subject_slug or _slugify(subject or "", "subject")
         out_path = out_dir / f"{slug}-reconstructed-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
 
-    out_path.write_text(json.dumps(output_obj, ensure_ascii=False, indent=2), encoding="utf-8")
+    out_path.write_text(json.dumps(outcome.outline, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # 简要摘要到 stderr
     print(f"[完成] 已生成整合目录: {out_path}", file=sys.stderr)
-    print(f"使用模型: {llm_conf.key} ({llm_conf.provider}:{llm_conf.model})", file=sys.stderr)
+    llm_info = outcome.llm_info
+    llm_desc = llm_info.get("key")
+    provider = llm_info.get("provider")
+    model = llm_info.get("model")
+    if provider and model:
+        if llm_desc:
+            print(f"使用模型: {llm_desc} ({provider}:{model})", file=sys.stderr)
+        else:
+            print(f"使用模型: {provider}:{model}", file=sys.stderr)
+    elif llm_desc:
+        print(f"使用模型: {llm_desc}", file=sys.stderr)
     print(f"输入教材数: {len(materials.get('materials') or [])}", file=sys.stderr)
 
     return 0

@@ -122,6 +122,17 @@ class PipelineState(TypedDict, total=False):
     tocs: List[Dict[str, Any]]
 
 
+# --- 运行结果定义 ---
+class TextbookTOCResult(TypedDict):
+    subject: str
+    subject_slug: str
+    top_n: int
+    expected_content: str
+    recommendations: List[Dict[str, Any]]
+    tocs: List[Dict[str, Any]]
+    timestamp: str
+
+
 # --- 流水线节点 ---
 def generate_subject_slug(state: PipelineState) -> PipelineState:
     """使用轻量模型为 subject 生成英文 kebab-case slug。
@@ -419,6 +430,61 @@ def build_graph():
     return g.compile()
 
 
+def run_textbook_toc_pipeline(
+    subject: str,
+    *,
+    top_n: int = 3,
+    max_parallel: int = 5,
+    gemini_llm_key: Optional[str] = None,
+    kimi_llm_key: Optional[str] = None,
+    expected_content: Optional[str] = None,
+    print_prompt: bool = False,
+    cfg: Optional[Dict[str, Any]] = None,
+    logger: Optional[logging.Logger] = None,
+) -> TextbookTOCResult:
+    """执行教材推荐 + TOC 检索流水线，返回标准化结果对象。"""
+    cfg = cfg or _load_config()
+    logger = logger or logging.getLogger(__name__)
+
+    kimi_cfg = load_kimi_config(cfg, kimi_llm_key)
+    clean_top_n = max(1, int(top_n))
+    clean_parallel = max(1, int(max_parallel))
+    expected_text = (expected_content or "").strip()
+
+    app = build_graph()
+    logger.info(
+        "启动教材目录生成流水线 | 主题=%s | top_n=%d | 并行度=%d | Gemini=%s | Kimi=%s",
+        subject,
+        clean_top_n,
+        clean_parallel,
+        gemini_llm_key or (cfg.get("node_llm", {}) or {}).get("recommend_textbooks"),
+        kimi_cfg.model,
+    )
+    init_state: PipelineState = {
+        "subject": subject,
+        "top_n": clean_top_n,
+        "max_parallel": clean_parallel,
+        "recommender_llm_key": gemini_llm_key,
+        "kimi": kimi_cfg,
+        "expected_content": expected_text,
+        "print_prompt": bool(print_prompt),
+    }
+    logger.info("LangGraph 已构建，开始执行 …")
+    final_state = app.invoke(init_state)
+
+    slug = final_state.get("subject_slug") or _slugify(subject, "subject")
+    result: TextbookTOCResult = {
+        "subject": subject,
+        "subject_slug": slug,
+        "top_n": clean_top_n,
+        "expected_content": expected_text,
+        "recommendations": final_state.get("recommendations", []) or [],
+        "tocs": final_state.get("tocs", []) or [],
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description="Gemini 推荐教材 + Kimi 并行检索目录 (LangGraph)")
     parser.add_argument("--subject", required=True, help="主题，例如：计算机网络、微观经济学")
@@ -440,37 +506,17 @@ def main():
     logger = logging.getLogger(__name__)
 
     cfg = _load_config()
-    kimi_cfg = load_kimi_config(cfg, args.kimi_llm_key)
-
-    logger.info(
-        "启动教材目录生成流水线 | 主题=%s | top_n=%d | 并行度=%d | Gemini=%s | Kimi=%s",
-        args.subject, args.top_n, args.max_parallel, (args.gemini_llm_key or (cfg.get("node_llm", {}) or {}).get("default")), kimi_cfg.model,
+    run_result = run_textbook_toc_pipeline(
+        subject=args.subject,
+        top_n=args.top_n,
+        max_parallel=args.max_parallel,
+        gemini_llm_key=args.gemini_llm_key,
+        kimi_llm_key=args.kimi_llm_key,
+        expected_content=args.expected_content,
+        print_prompt=args.print_prompt,
+        cfg=cfg,
+        logger=logger,
     )
-
-    app = build_graph()
-    logger.info("LangGraph 已构建，开始执行 …")
-    init_state: PipelineState = {
-        "subject": args.subject,
-        "top_n": max(1, int(args.top_n)),
-        "max_parallel": max(1, int(args.max_parallel)),
-        "recommender_llm_key": args.gemini_llm_key,
-        "kimi": kimi_cfg,
-        "expected_content": (args.expected_content or "").strip(),
-        "print_prompt": bool(args.print_prompt),
-    }
-
-    final_state = app.invoke(init_state)
-
-    # 汇总并写出结果
-    out = {
-        "subject": args.subject,
-        "subject_slug": final_state.get("subject_slug") or _slugify(args.subject, "subject"),
-        "top_n": init_state["top_n"],
-        "expected_content": init_state.get("expected_content") or "",
-        "recommendations": final_state.get("recommendations", []),
-        "tocs": final_state.get("tocs", []),
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-    }
 
     if args.out:
         out_path = Path(args.out)
@@ -478,18 +524,18 @@ def main():
     else:
         out_dir = BASE_DIR / "output" / "textbook_tocs"
         ensure_dir(out_dir)
-        slug = out.get("subject_slug") or _slugify(args.subject, "subject")
+        slug = run_result.get("subject_slug") or _slugify(args.subject, "subject")
         out_path = out_dir / f"{slug}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
 
-    out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    out_path.write_text(json.dumps(run_result, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # 终端摘要信息
     logger.info("[完成] 输出文件: %s", out_path)
-    recs = final_state.get("recommendations", []) or []
+    recs = run_result.get("recommendations", []) or []
     logger.info("推荐教材: %d 本 (展示前 %d 本)", len(recs), min(3, len(recs)))
     for i, b in enumerate(recs[:3], 1):
         logger.info("  %d. %s", i, b.get('title', '(no title)'))
-    tocs = final_state.get("tocs", []) or []
+    tocs = run_result.get("tocs", []) or []
     ok = sum(1 for t in tocs if not t.get("error"))
     logger.info("目录获取成功: %d/%d", ok, len(tocs))
 

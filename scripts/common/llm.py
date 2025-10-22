@@ -192,10 +192,70 @@ class LLM:
                 stream=True,
                 generation_config=config,
             )
+            def _collect_text_parts(ch) -> list[str]:
+                texts: list[str] = []
+                try:
+                    candidates = getattr(ch, "candidates", []) or []
+                except Exception:
+                    candidates = []
+                for cand in candidates:
+                    content = getattr(cand, "content", None)
+                    parts = getattr(content, "parts", None) if content is not None else None
+                    if not parts:
+                        continue
+                    for part in parts:
+                        txt = getattr(part, "text", None)
+                        if txt:
+                            texts.append(txt)
+                return texts
+
+            def _collect_finish_reasons(ch) -> list[Any]:
+                reasons: list[Any] = []
+                try:
+                    candidates = getattr(ch, "candidates", []) or []
+                except Exception:
+                    candidates = []
+                for cand in candidates:
+                    fr = getattr(cand, "finish_reason", None)
+                    if fr is not None:
+                        reasons.append(fr)
+                return reasons
+
+            def _is_stop_reason(reason: Any) -> bool:
+                if reason is None:
+                    return False
+                if isinstance(reason, (int, float)):
+                    try:
+                        return int(reason) == 1
+                    except Exception:
+                        return False
+                text = str(reason).strip().lower()
+                return text in {"1", "stop", "finishreason.stop"}
+
             for chunk in response_stream:
-                if chunk.text:
-                    yield chunk.text
-        
+                texts = _collect_text_parts(chunk)
+                if texts:
+                    for piece in texts:
+                        if piece:
+                            yield piece
+                else:
+                    try:
+                        text = chunk.text
+                        if text:
+                            yield text
+                    except ValueError:
+                        pass
+
+                finish_reasons = _collect_finish_reasons(chunk)
+                if finish_reasons:
+                    try:
+                        self.last_info = {"finish_reasons": [str(fr) for fr in finish_reasons]}
+                    except Exception:
+                        self.last_info = {"finish_reasons": finish_reasons}
+                    if all(_is_stop_reason(fr) for fr in finish_reasons):
+                        break
+                    raise RuntimeError(f"Gemini 流式输出中断: finish_reason={finish_reasons}")
+
         else:
             raise RuntimeError(f"Unknown provider for streaming: {self._provider}")
 

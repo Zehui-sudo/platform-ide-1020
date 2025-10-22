@@ -2,74 +2,73 @@
 # -*- coding: utf-8 -*-
 
 """
-串联模式的完整流水线：教材推荐/目录检索（TOC） → 大纲重构（按 theory/tool 分流）
+综合教材流水线（可选阶段）：
+- full        : 推荐教材 + 抓取目录 + 大纲重构（默认）
+- toc         : 仅执行教材推荐与目录抓取
+- reconstruct : 基于已有目录 JSON 执行大纲重构
 
-设计要点
-- 不新增新的 LangGraph 节点，直接复用并串联两个现有脚本：
-  1) scripts/pipelines/langgraph/textbook_toc_pipeline_langgraph.py
-  2) scripts/pipelines/langgraph/reconstruct_outline_langgraph.py
-- 输出结构与 integrated_textbook_pipeline_langgraph.py 基本一致：
-  {
-    "subject", "top_n", "recommendations", "tocs", "reconstructed_outline", "timestamp"
-  }
-- 重构阶段沿用“精准区分 tool/theory + 不同生成方式 + 输出 meta.subject/subject_type”。
-
-运行示例
+示例
   python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
+    --stage full \
     --subject "Web媒体加密" \
     --top-n 3 \
-    --print-prompt \
-    --stream \
     --learning-style principles \
     --expected-content "主流流媒体平台视频分发的加密方式，如何防止恶意下载" \
-    --log
+    --print-prompt
+
+  - 只跑教材推荐+目录抓取：
+    python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py
+    --stage toc 
+    --subject "XXX" 
+    --top-n 3 
+
+  - 只跑大纲重构：先准备含 tocs 的 JSON，然后执行 
+    python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py 
+    --stage reconstruct 
+    --input path/to/toc.json 
+    --learning-style principles
+
+  全流程
+    python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
+    --stage full \
+    --subject "Web媒体加密" \
+    --top-n 3 \
+    --learning-style principles \
+    --expected-content "主流流媒体平台视频分发的加密方式，如何防止恶意下载" \
+    --print-prompt
 """
 
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import logging
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-# Ensure the project root (containing the `scripts` package) is importable when this file
-# is executed as a script via a relative path such as `python3 scripts/...`.
 _REPO_ROOT_CANDIDATE = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT_CANDIDATE) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT_CANDIDATE))
 
-from scripts.common.llm import build_llm_registry, pick_llm
 from scripts.common.utils import repo_root as _repo_root, load_config as _load_config, slugify as _slugify
-
-
-# -----------------------------
-# 基础工具（独立实现，避免对下游脚本私有函数的强耦合）
-# -----------------------------
+from scripts.pipelines.langgraph.textbook_toc_pipeline_langgraph import (
+    TextbookTOCResult,
+    run_textbook_toc_pipeline,
+)
+from scripts.pipelines.langgraph.reconstruct_outline_langgraph import (
+    ReconstructOutlineResult,
+    prepare_materials_from_tocs,
+    run_reconstruct_outline,
+)
 
 BASE_DIR = _repo_root()
 CONFIG_PATH = BASE_DIR / "config.json"
 
 
-def _import_module_from_path(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, str(path))
-    if spec is None or spec.loader is None:
-        raise ImportError(f"无法从路径加载模块: {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)  # type: ignore[attr-defined]
-    return module
-
-
 class _Tee:
-    """简单的终端输出 Tee：同时写入原有流与日志文件。
-
-    用于将所有 print/logging 输出镜像到 output 下的 .log 文件。
-    """
+    """简单的终端输出 Tee：同时写入原有流与日志文件。"""
 
     def __init__(self, *streams):
         self._streams = [s for s in streams if s is not None]
@@ -81,7 +80,6 @@ class _Tee:
                 cnt = s.write(data)
                 total = max(total, cnt if isinstance(cnt, int) else len(data))
             except Exception:
-                # 忽略写入异常，避免影响主流程
                 pass
         self.flush()
         return total or len(data)
@@ -93,223 +91,171 @@ class _Tee:
             except Exception:
                 pass
 
-    def isatty(self) -> bool:  # 兼容性
+    def isatty(self) -> bool:
         try:
             return bool(getattr(self._streams[0], "isatty", lambda: False)())
         except Exception:
             return False
 
 
-# -----------------------------
-# 阶段一：复用 TOC 流水线（LangGraph）
-# -----------------------------
+def _resolve_json_input(path: Path) -> Path:
+    if path.is_dir():
+        cands = sorted(path.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True)
+        if not cands:
+            raise FileNotFoundError("输入目录中未找到 .json 文件")
+        return cands[0]
+    if not path.exists():
+        raise FileNotFoundError(f"未找到输入文件: {path}")
+    return path
 
-def run_toc_pipeline(
+
+def _load_json(path: Path) -> Dict[str, Any]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"读取/解析 JSON 失败: {exc}") from exc
+
+
+def execute_toc_stage(
     subject: str,
+    *,
     top_n: int,
     max_parallel: int,
     cfg: Dict[str, Any],
     gemini_llm_key: Optional[str],
     kimi_llm_key: Optional[str],
-    expected_content: Optional[str] = None,
-    print_prompt: bool = False,
-) -> Dict[str, Any]:
-    """调用 textbook_toc_pipeline_langgraph 的图，返回 {subject, subject_slug, recommendations, tocs}。"""
-    toc_path = (
-        Path(__file__).resolve().parent / "textbook_toc_pipeline_langgraph.py"
+    expected_content: Optional[str],
+    print_prompt: bool,
+    logger: logging.Logger,
+) -> TextbookTOCResult:
+    return run_textbook_toc_pipeline(
+        subject=subject,
+        top_n=top_n,
+        max_parallel=max_parallel,
+        gemini_llm_key=gemini_llm_key,
+        kimi_llm_key=kimi_llm_key,
+        expected_content=expected_content,
+        print_prompt=print_prompt,
+        cfg=cfg,
+        logger=logger,
     )
-    toc_mod = _import_module_from_path("_toc_pipeline", toc_path)
-
-    # 读取 Kimi 配置（OpenAI 兼容 + web_search 工具）
-    kimi_cfg = toc_mod.load_kimi_config(cfg, kimi_llm_key)
-
-    app = toc_mod.build_graph()
-    init_state = {
-        "subject": subject,
-        "top_n": max(1, int(top_n)),
-        "max_parallel": max(1, int(max_parallel)),
-        "recommender_llm_key": gemini_llm_key,
-        "kimi": kimi_cfg,
-        "expected_content": (expected_content or "").strip(),
-        "print_prompt": bool(print_prompt),
-    }
-    logging.getLogger(__name__).info(
-        "[1/2] 运行 TOC 流水线 … subject=%s, recommender=%s, toc_retriever=%s",
-        subject,
-        gemini_llm_key,
-        kimi_llm_key,
-    )
-    final_state = app.invoke(init_state)
-    return {
-        "subject": subject,
-        "subject_slug": final_state.get("subject_slug") or _slugify(subject, "subject"),
-        "expected_content": init_state.get("expected_content", ""),
-        "recommendations": final_state.get("recommendations", []),
-        "tocs": final_state.get("tocs", []),
-    }
 
 
-# -----------------------------
-# 阶段二：复用重构逻辑（函数式，非新节点）
-# -----------------------------
-
-def run_reconstruct(
+def execute_reconstruct_stage(
     subject: str,
-    subject_slug: Optional[str],
     tocs: List[Dict[str, Any]],
+    *,
     cfg: Dict[str, Any],
+    subject_slug: Optional[str],
     reconstruct_llm_key: Optional[str],
     classifier_llm_key: Optional[str],
-    force_subject_type: Optional[str],
+    subject_type: Optional[str],
     learning_style: Optional[str],
     expected_content: Optional[str],
     print_prompt: bool,
     stream: bool,
     max_tokens: Optional[int],
-) -> Dict[str, Any]:
-    """根据 subject 类型路由不同 Prompt，生成并解析输出，注入 meta。"""
-    recon_path = (
-        Path(__file__).resolve().parent / "reconstruct_outline_langgraph.py"
+    logger: logging.Logger,
+    materials: Optional[Dict[str, Any]] = None,
+) -> ReconstructOutlineResult:
+    materials_obj = materials or prepare_materials_from_tocs(subject, tocs)
+    return run_reconstruct_outline(
+        subject=subject,
+        materials=materials_obj,
+        cfg=cfg,
+        reconstruct_llm_key=reconstruct_llm_key,
+        classifier_llm_key=classifier_llm_key,
+        subject_type=subject_type,
+        learning_style=learning_style,
+        expected_content=expected_content,
+        subject_slug=subject_slug,
+        print_prompt=print_prompt,
+        stream=stream,
+        max_tokens=max_tokens,
+        logger=logger,
     )
-    recon_mod = _import_module_from_path("_reconstruct_pipeline", recon_path)
-
-    # 构造可用材料（最多 3 份）
-    items: List[Dict[str, Any]] = []
-    for t in tocs or []:
-        if not isinstance(t, dict) or t.get("error"):
-            continue
-        items.append({
-            "book": t.get("book", {}),
-            "toc": t.get("toc", []),
-            "source": t.get("source", ""),
-        })
-        if len(items) >= 3:
-            break
-    if len(items) < 2:
-        raise ValueError(f"有效教材目录不足2份，无法进行重构。当前有效数量：{len(items)}")
-
-    # 选择生成与分类 LLM（统一使用 shared LLM 组件）
-    registry = build_llm_registry(cfg)
-    caller = pick_llm(cfg, registry, reconstruct_llm_key)
-    # 分类模型由 main 函数在 CLI 和 config.json 之间决策后传入
-    classifier_llm = pick_llm(cfg, registry, classifier_llm_key)
-    class _CompatCaller:
-        def __init__(self, llm):
-            self._llm = llm
-        def complete(self, prompt: str, max_tokens: Optional[int] = None) -> str:
-            return self._llm.complete(prompt, max_tokens=max_tokens)
-
-    # 决定 subject_type
-    logging.getLogger(__name__).info("使用模型 '%s' 进行主题分类...", classifier_llm_key)
-    if force_subject_type:
-        subject_type = force_subject_type.strip().lower()
-    else:
-        subject_type = recon_mod.classify_subject(subject, _CompatCaller(classifier_llm))
-        if subject_type not in ("theory", "tool"):
-            raise SystemExit(f"[错误] 主题分类失败: {subject_type}")
-    print(f"[信息] 主题分类结果: {subject} → {subject_type}", file=sys.stderr)
-
-    # 组装 Prompt（按类型 + 学习风格路由）
-    materials_obj = {"subject": subject, "materials": items}
-    try:
-        prompt = recon_mod.build_prompt(
-            subject,
-            materials_obj,
-            subject_type,
-            learning_style=learning_style,
-            expected_content=(expected_content or "").strip() or None,
-        )
-    except TypeError:
-        # 兼容旧版函数签名（未接受新增参数）
-        prompt = recon_mod.build_prompt(subject, materials_obj, subject_type)
-    if print_prompt:
-        print("========== DEBUG: Prompt Begin ==========", file=sys.stderr)
-        print(prompt, file=sys.stderr)
-        print("=========== DEBUG: Prompt End ===========", file=sys.stderr)
-
-    # 调用 LLM
-    logging.getLogger(__name__).info("使用模型 '%s' 进行大纲重构...", reconstruct_llm_key)
-    if stream:
-        print("[信息] 正在以流式方式接收模型输出…", file=sys.stderr)
-        buf: List[str] = []
-        for piece in caller.stream_complete(
-            prompt, max_tokens=max_tokens if (max_tokens and max_tokens > 0) else 8192
-        ):
-            buf.append(piece)
-            print(piece, end="", file=sys.stderr, flush=True)
-        print("", file=sys.stderr)
-        raw = "".join(buf)
-    else:
-        raw = caller.complete(
-            prompt, max_tokens=max_tokens if (max_tokens and max_tokens > 0) else None
-        )
-
-    try:
-        output_obj = recon_mod._extract_json(raw)
-    except Exception as e:
-        raise SystemExit(f"[错误] LLM 输出解析失败: {e}")
-
-    # 注入元数据（包含 subject_slug → topic_slug）
-    try:
-        if isinstance(output_obj, dict):
-            meta = output_obj.get("meta")
-            if not isinstance(meta, dict):
-                meta = {}
-            meta.setdefault("subject", subject)
-            meta.setdefault("subject_type", subject_type)
-            # 将 slug 传递给下游，便于统一命名
-            meta.setdefault("topic_slug", subject_slug or _slugify(subject, "subject"))
-            if learning_style:
-                meta.setdefault("learning_style", learning_style)
-            if expected_content is not None:
-                meta.setdefault("expected_content", (expected_content or "").strip())
-            output_obj["meta"] = meta
-    except Exception:
-        pass
-
-    return output_obj
 
 
-# -----------------------------
-# CLI 入口
-# -----------------------------
+def run_full_pipeline(
+    subject: str,
+    *,
+    top_n: int,
+    max_parallel: int,
+    cfg: Dict[str, Any],
+    gemini_llm_key: Optional[str],
+    kimi_llm_key: Optional[str],
+    reconstruct_llm_key: Optional[str],
+    classifier_llm_key: Optional[str],
+    subject_type: Optional[str],
+    learning_style: Optional[str],
+    expected_content: Optional[str],
+    print_prompt: bool,
+    stream: bool,
+    max_tokens: Optional[int],
+    logger: logging.Logger,
+) -> Tuple[Dict[str, Any], TextbookTOCResult, ReconstructOutlineResult]:
+    toc_result = execute_toc_stage(
+        subject,
+        top_n=top_n,
+        max_parallel=max_parallel,
+        cfg=cfg,
+        gemini_llm_key=gemini_llm_key,
+        kimi_llm_key=kimi_llm_key,
+        expected_content=expected_content,
+        print_prompt=print_prompt,
+        logger=logger,
+    )
+    recon_result = execute_reconstruct_stage(
+        subject,
+        toc_result.get("tocs", []) or [],
+        cfg=cfg,
+        subject_slug=toc_result.get("subject_slug"),
+        reconstruct_llm_key=reconstruct_llm_key,
+        classifier_llm_key=classifier_llm_key,
+        subject_type=subject_type,
+        learning_style=learning_style,
+        expected_content=expected_content if expected_content is not None else toc_result.get("expected_content"),
+        print_prompt=print_prompt,
+        stream=stream,
+        max_tokens=max_tokens,
+        logger=logger,
+    )
+    combined = {
+        "subject": toc_result["subject"],
+        "subject_slug": toc_result["subject_slug"],
+        "top_n": toc_result["top_n"],
+        "expected_content": toc_result.get("expected_content", expected_content or ""),
+        "recommendations": toc_result.get("recommendations", []),
+        "tocs": toc_result.get("tocs", []),
+        "reconstructed_outline": recon_result.outline,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+    return combined, toc_result, recon_result
+
 
 def main(argv: Optional[List[str]] = None) -> int:
-    p = argparse.ArgumentParser(description="复用+串联：教材 TOC → 大纲重构 的完整流水线")
-    p.add_argument("--subject", required=True, help="主题，例如：计算机网络、微观经济学")
-    p.add_argument("--top-n", type=int, default=3, help="获取目录的教材数量")
-    p.add_argument("--max-parallel", type=int, default=5, help="Kimi 并行查询上限")
-    p.add_argument("--gemini-llm-key", type=str, default=None, help="config.json.llms 中 Gemini 的 key，例如 gemini-2.5-pro")
-    p.add_argument("--kimi-llm-key", type=str, default=None, help="config.json.llms 中 Kimi 的 key，例如 kimi-k2")
-    p.add_argument("--reconstruct-llm-key", type=str, default=None, help="config.json.llms 中重构阶段使用的 LLM key")
-    p.add_argument("--classifier-llm-key", type=str, default=None, help="用于主题分类的 LLM 键名（默认 gemini-2.5-flash 如存在）")
-    p.add_argument("--subject-type", choices=["theory", "tool"], default=None, help="手工指定主题类型，跳过自动分类")
-    p.add_argument("--learning-style", required=True, help="学习风格（必选）：principles | deep_preview | 原理学习 | 深度预习（仅理论类生效）")
-    p.add_argument("--expected-content", type=str, default=None, help="学习者期望（可选，追加于输入材料之后）")
-    p.add_argument("--max-tokens", type=int, default=32768, help="重构阶段最大 tokens，默认无限制")
-    p.add_argument("--print-prompt", action="store_true", help="在终端输出发送给重构 LLM 的完整 Prompt 以便调试")
-    p.add_argument("--stream", action="store_true", help="启用流式输出，在控制台实时显示模型响应")
-    p.add_argument("--config", default=str(CONFIG_PATH), help="配置文件路径（默认项目根 config.json）")
-    p.add_argument("--out", type=str, default=None, help="综合输出 JSON 文件路径，可选")
-    p.add_argument("--log", action="store_true", help="将终端输出镜像到 output/integrated_pipeline 下的 .log 文件")
-    p.add_argument("--debug", action="store_true", help="等同 --log，并将日志级别提升为 DEBUG")
-    args = p.parse_args(argv)
+    parser = argparse.ArgumentParser(description="综合教材流水线（可选阶段）")
+    parser.add_argument("--stage", choices=["full", "toc", "reconstruct"], default="full", help="选择执行阶段，默认 full")
+    parser.add_argument("--subject", help="学习主题（full/toc 阶段必填）")
+    parser.add_argument("--top-n", type=int, default=3, help="获取目录的教材数量（full/toc 阶段有效）")
+    parser.add_argument("--max-parallel", type=int, default=5, help="Kimi 并行检索上限（full/toc 阶段有效）")
+    parser.add_argument("--gemini-llm-key", help="config.json.llms 中 Gemini 的 key")
+    parser.add_argument("--kimi-llm-key", help="config.json.llms 中 Kimi 的 key")
+    parser.add_argument("--reconstruct-llm-key", help="config.json.llms 中大纲重构使用的 key")
+    parser.add_argument("--classifier-llm-key", help="用于主题分类的 LLM key")
+    parser.add_argument("--subject-type", choices=["theory", "tool"], help="手动指定主题类型，跳过自动分类")
+    parser.add_argument("--learning-style", help="学习风格：principles | deep_preview | 原理学习 | 深度预习")
+    parser.add_argument("--expected-content", help="学习者期望（可选）")
+    parser.add_argument("--max-tokens", type=int, default=32768, help="重构阶段的最大 tokens（full/reconstruct 阶段）")
+    parser.add_argument("--print-prompt", action="store_true", help="输出 Prompt 以便调试")
+    parser.add_argument("--stream", action="store_true", help="启用流式输出（full/reconstruct 阶段）")
+    parser.add_argument("--input", help="TOC JSON 输入路径或目录（reconstruct 阶段必填）")
+    parser.add_argument("--config", default=str(CONFIG_PATH), help="配置文件路径（默认项目根 config.json）")
+    parser.add_argument("--out", help="输出 JSON 文件路径（留空则自动生成）")
+    parser.add_argument("--log", action="store_true", help="full 阶段：将终端输出镜像到日志文件")
+    parser.add_argument("--debug", action="store_true", help="full 阶段：开启日志并提升日志级别到 DEBUG")
+    args = parser.parse_args(argv)
 
-    # 计算时间戳与 slug，用于默认输出文件命名（与日志配对）
-    ts = datetime.now().strftime('%Y%m%d-%H%M%S')
-    pre_slug = _slugify(args.subject, "subject")
-    # 若开启日志，将终端输出镜像到日志文件
-    log_fp = None
-    _orig_stdout, _orig_stderr = sys.stdout, sys.stderr
-    if args.log or args.debug:
-        pre_out_dir = BASE_DIR / "output" / "integrated_pipeline"
-        pre_out_dir.mkdir(parents=True, exist_ok=True)
-        log_path = pre_out_dir / f"{pre_slug}-integrated-{ts}.log"
-        log_fp = open(log_path, "w", encoding="utf-8")
-        sys.stdout = _Tee(sys.stdout, log_fp)
-        sys.stderr = _Tee(sys.stderr, log_fp)
-
-    # 初始化 logging（其输出写入 stderr；若启用 Tee 即被镜像到文件）
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
@@ -318,9 +264,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     logger = logging.getLogger(__name__)
 
     cfg = _load_config(args.config)
+    stage = args.stage
 
-    # 确定各阶段 LLM Key（CLI 优先，否则回退到 config.json）
-    node_llm_cfg = cfg.get("node_llm", {})
+    if stage in {"full", "toc"} and not (args.subject or "").strip():
+        print("[错误] --subject 为必填参数（full/toc 阶段）。", file=sys.stderr)
+        return 2
+    if stage == "reconstruct" and not args.input:
+        print("[错误] reconstruct 阶段必须提供 --input。", file=sys.stderr)
+        return 2
+
+    expected_clean = (args.expected_content or "").strip() or None
+
+    node_llm_cfg = cfg.get("node_llm") or {}
     gemini_key = args.gemini_llm_key or node_llm_cfg.get("recommend_textbooks")
     kimi_key = args.kimi_llm_key or node_llm_cfg.get("retrieve_toc")
     reconstruct_key = args.reconstruct_llm_key or node_llm_cfg.get("reconstruct_outline")
@@ -332,60 +287,146 @@ def main(argv: Optional[List[str]] = None) -> int:
     logger.info("  - Outline Reconstruction: %s", reconstruct_key)
     logger.info("  - Subject Classification: %s", classifier_key)
 
-    # 规范化/校验学习风格
-    def _normalize_style(s: Optional[str]) -> str:
-        val = (s or "").strip().lower()
-        mapping = {
-            "principles": "principles",
-            "原理学习": "principles",
-            "deep_preview": "deep_preview",
-            "深度预习": "deep_preview",
-        }
-        return mapping.get(val, mapping.get(s or "", ""))
+    if stage == "toc":
+        toc_result = execute_toc_stage(
+            subject=args.subject.strip(),
+            top_n=max(1, int(args.top_n)),
+            max_parallel=max(1, int(args.max_parallel)),
+            cfg=cfg,
+            gemini_llm_key=gemini_key,
+            kimi_llm_key=kimi_key,
+            expected_content=expected_clean,
+            print_prompt=bool(args.print_prompt),
+            logger=logger,
+        )
+        if args.out:
+            out_path = Path(args.out)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            out_dir = BASE_DIR / "output" / "textbook_tocs"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            slug = toc_result.get("subject_slug") or _slugify(args.subject, "subject")
+            out_path = out_dir / f"{slug}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+        out_path.write_text(json.dumps(toc_result, ensure_ascii=False, indent=2), encoding="utf-8")
+        logger.info("[完成] 输出文件: %s", out_path)
+        recs = toc_result.get("recommendations", []) or []
+        logger.info("推荐教材: %d 本 (展示前 %d 本)", len(recs), min(3, len(recs)))
+        for i, book in enumerate(recs[:3], 1):
+            logger.info("  %d. %s", i, book.get("title", "(no title)"))
+        tocs = toc_result.get("tocs", []) or []
+        ok = sum(1 for t in tocs if not t.get("error"))
+        logger.info("目录获取成功: %d/%d", ok, len(tocs))
+        return 0
 
-    norm_style = _normalize_style(args.learning_style)
-    if norm_style not in ("principles", "deep_preview"):
-        raise SystemExit("[错误] --learning-style 必须为 principles/deep_preview 或 对应中文：原理学习/深度预习")
+    if stage == "reconstruct":
+        path = _resolve_json_input(Path(args.input))
+        data = _load_json(path)
+        tocs = data.get("tocs") or []
+        if not isinstance(tocs, list) or not tocs:
+            print("[错误] 输入 JSON 中缺少有效的 tocs 列表。", file=sys.stderr)
+            return 1
+        subject = (args.subject or data.get("subject") or "").strip()
+        if not subject:
+            print("[错误] 未提供 subject，且输入 JSON 中缺失。", file=sys.stderr)
+            return 1
+        subject_slug = (data.get("subject_slug") or "").strip() or None
+        expected_for_stage = expected_clean if args.expected_content is not None else (data.get("expected_content") or "")
+        materials_obj = prepare_materials_from_tocs(subject, tocs)
+        try:
+            recon_result = execute_reconstruct_stage(
+                subject,
+                tocs,
+                cfg=cfg,
+                subject_slug=subject_slug,
+                reconstruct_llm_key=reconstruct_key,
+                classifier_llm_key=classifier_key,
+                subject_type=args.subject_type,
+                learning_style=args.learning_style,
+                expected_content=expected_for_stage,
+                print_prompt=bool(args.print_prompt),
+                stream=bool(args.stream),
+                max_tokens=args.max_tokens,
+                logger=logger,
+                materials=materials_obj,
+            )
+        except Exception as exc:
+            print(f"[错误] {exc}", file=sys.stderr)
+            return 1
 
-    # 阶段一：TOC
-    stage1 = run_toc_pipeline(
-        subject=args.subject,
-        top_n=max(1, int(args.top_n)),
-        max_parallel=max(1, int(args.max_parallel)),
-        cfg=cfg,
-        gemini_llm_key=gemini_key,
-        kimi_llm_key=kimi_key,
-        expected_content=(args.expected_content or "").strip() if hasattr(args, 'expected_content') else None,
-        print_prompt=bool(args.print_prompt),
-    )
+        if args.out:
+            out_path = Path(args.out)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            out_dir = BASE_DIR / "output" / "reconstructed_outline"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            slug = subject_slug or _slugify(subject, "subject")
+            out_path = out_dir / f"{slug}-reconstructed-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+        out_path.write_text(json.dumps(recon_result.outline, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # 阶段二：重构
-    reconstructed = run_reconstruct(
-        subject=stage1["subject"],
-        subject_slug=stage1.get("subject_slug"),
-        tocs=stage1.get("tocs", []) or [],
-        cfg=cfg,
-        reconstruct_llm_key=reconstruct_key,
-        classifier_llm_key=classifier_key,
-        force_subject_type=args.subject_type,
-        learning_style=norm_style,
-        expected_content=args.expected_content,
-        print_prompt=bool(args.print_prompt),
-        stream=bool(args.stream),
-        max_tokens=args.max_tokens,
-    )
+        print(f"[完成] 已生成整合目录: {out_path}", file=sys.stderr)
+        info = recon_result.llm_info
+        key = info.get("key")
+        provider = info.get("provider")
+        model = info.get("model")
+        if provider and model:
+            if key:
+                print(f"使用模型: {key} ({provider}:{model})", file=sys.stderr)
+            else:
+                print(f"使用模型: {provider}:{model}", file=sys.stderr)
+        elif key:
+            print(f"使用模型: {key}", file=sys.stderr)
+        print(f"输入教材数: {len(materials_obj.get('materials', []))}", file=sys.stderr)
+        return 0
 
-    # 汇总 & 输出
-    out_obj = {
-        "subject": stage1["subject"],
-        "subject_slug": stage1.get("subject_slug") or _slugify(args.subject, "subject"),
-        "top_n": max(1, int(args.top_n)),
-        "expected_content": stage1.get("expected_content", (args.expected_content or "")),
-        "recommendations": stage1.get("recommendations", []),
-        "tocs": stage1.get("tocs", []),
-        "reconstructed_outline": reconstructed,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-    }
+    # stage == full
+    subject = args.subject.strip()
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    slug = _slugify(subject, "subject")
+    log_fp = None
+    orig_stdout, orig_stderr = sys.stdout, sys.stderr
+
+    if args.log or args.debug:
+        log_dir = BASE_DIR / "output" / "integrated_pipeline"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"{slug}-integrated-{ts}.log"
+        log_fp = open(log_path, "w", encoding="utf-8")
+        sys.stdout = _Tee(sys.stdout, log_fp)
+        sys.stderr = _Tee(sys.stderr, log_fp)
+
+    try:
+        combined, toc_result, recon_result = run_full_pipeline(
+            subject,
+            top_n=max(1, int(args.top_n)),
+            max_parallel=max(1, int(args.max_parallel)),
+            cfg=cfg,
+            gemini_llm_key=gemini_key,
+            kimi_llm_key=kimi_key,
+            reconstruct_llm_key=reconstruct_key,
+            classifier_llm_key=classifier_key,
+            subject_type=args.subject_type,
+            learning_style=args.learning_style,
+            expected_content=expected_clean,
+            print_prompt=bool(args.print_prompt),
+            stream=bool(args.stream),
+            max_tokens=args.max_tokens,
+            logger=logger,
+        )
+    except Exception as exc:
+        if log_fp is not None:
+            try:
+                sys.stdout.flush()
+                sys.stderr.flush()
+            except Exception:
+                pass
+            sys.stdout = orig_stdout
+            sys.stderr = orig_stderr
+            try:
+                log_fp.flush()
+                log_fp.close()
+            except Exception:
+                pass
+        print(f"[错误] {exc}", file=sys.stderr)
+        return 1
 
     if args.out:
         out_path = Path(args.out)
@@ -393,39 +434,33 @@ def main(argv: Optional[List[str]] = None) -> int:
     else:
         out_dir = BASE_DIR / "output" / "integrated_pipeline"
         out_dir.mkdir(parents=True, exist_ok=True)
-        slug = out_obj.get("subject_slug") or _slugify(args.subject, "subject")
-        # 复用启动时刻的时间戳，便于与 .log 文件配对
-        out_path = out_dir / f"{slug}-integrated-{ts}.json"
+        out_path = out_dir / f"{combined.get('subject_slug', slug)}-integrated-{ts}.json"
+    out_path.write_text(json.dumps(combined, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    out_path.write_text(json.dumps(out_obj, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    # 摘要
     logger.info("[完成] 输出文件: %s", out_path)
-    recs = out_obj.get("recommendations", []) or []
+    recs = toc_result.get("recommendations", []) or []
     logger.info("推荐教材: %d 本 (展示前 %d 本)", len(recs), min(3, len(recs)))
-    for i, b in enumerate(recs[:3], 1):
-        logger.info("  %d. %s", i, b.get('title', '(no title)'))
-    tocs = out_obj.get("tocs", []) or []
+    for i, book in enumerate(recs[:3], 1):
+        logger.info("  %d. %s", i, book.get("title", "(no title)"))
+    tocs = toc_result.get("tocs", []) or []
     ok = sum(1 for t in tocs if not t.get("error"))
     logger.info("目录获取成功: %d/%d", ok, len(tocs))
-    if out_obj.get("reconstructed_outline"):
+    if recon_result.outline:
         logger.info("大纲重构: 成功")
     else:
-        logger.warning("大纲重构: 失败")
+        logger.warning("大纲重构: 结果为空")
 
-    # 收尾：还原终端并关闭日志文件（仅在启用日志时）
     if log_fp is not None:
         try:
-            sys.stdout.flush(); sys.stderr.flush()
+            sys.stdout.flush()
+            sys.stderr.flush()
         except Exception:
             pass
+        sys.stdout = orig_stdout
+        sys.stderr = orig_stderr
         try:
-            sys.stdout = _orig_stdout
-            sys.stderr = _orig_stderr
-        except Exception:
-            pass
-        try:
-            log_fp.flush(); log_fp.close()
+            log_fp.flush()
+            log_fp.close()
         except Exception:
             pass
 
