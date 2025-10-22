@@ -16,16 +16,16 @@
 
 运行示例
   python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
-    --subject "Web 媒体技术" \
+    --subject "Web媒体加密" \
     --top-n 3 \
     --print-prompt \
     --stream \
-    --gemini-llm-key gemini-2.5-pro \
+    --gemini-llm-key gemini-2.5-pro-zhongzhuan \
     --kimi-llm-key kimi-k2 \
-    --reconstruct-llm-key gemini-2.5-pro \
-    --classifier-llm-key gemini-2.5-flash \
+    --reconstruct-llm-key gemini-2.5-pro-zhongzhuan \
+    --classifier-llm-key deepseek-chat \
     --learning-style principles \
-    --expected-content "不需要介绍过多的计算机网络原理的内容，更关心现在主流流媒体平台（如 twitter、YouTube）如何进行视频分发。如何使用chrome的devtools找到视频源下载" \
+    --expected-content "主流流媒体平台视频分发的加密方式，如何防止恶意下载" \
     --log
 """
 

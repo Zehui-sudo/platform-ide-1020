@@ -111,6 +111,13 @@ class KimiConfig:
     base_url: str
 
 
+@dataclass
+class DeepseekConfig:
+    model: str
+    api_key: str
+    base_url: str
+
+
 def _pick_llm_key_by_provider(cfg: Dict[str, Any], provider: str) -> Optional[str]:
     llms = cfg.get("llms") or {}
     for k, v in llms.items():
@@ -146,6 +153,39 @@ def load_kimi_config(cfg: Dict[str, Any], key_hint: Optional[str]) -> KimiConfig
     # 修正明显的 URL 拼写错误（例如 'hhttps://' → 'https://')
     base_url = re.sub(r"^hhttps://", "https://", base_url)
     return KimiConfig(model=model, api_key=api_key, base_url=base_url)
+
+
+def load_deepseek_config(cfg: Dict[str, Any], key_hint: Optional[str]) -> DeepseekConfig:
+    """从 config.json 读取 DeepSeek 配置；默认键 deepseek-chat。
+
+    - 支持从 llms 条目读取 api_key/base_url/model。
+    - 回退到环境变量：DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL。
+    - 若 base_url 未带 /v1，自动补全。
+    """
+    llms = cfg.get("llms") or {}
+    key = key_hint or ("deepseek-chat" if "deepseek-chat" in llms else _pick_llm_key_by_provider(cfg, "deepseek"))
+    if not key or key not in llms:
+        raise SystemExit("[错误] config.json 缺少 DeepSeek 配置项 (llms)。可指定 --deepseek-llm-key 或配置 llms.deepseek-chat")
+    entry = llms[key]
+    api_key = (
+        entry.get("api_key")
+        or entry.get("deepseek_api_key")
+        or os.environ.get("DEEPSEEK_API_KEY")
+    )
+    if not api_key:
+        raise SystemExit("[错误] 未配置 DeepSeek API Key。请在 config.json 或设置 DEEPSEEK_API_KEY。")
+    base_url = (
+        entry.get("base_url")
+        or entry.get("deepseek_base_url")
+        or os.environ.get("DEEPSEEK_BASE_URL")
+        or "https://api.deepseek.com"
+    )
+    # 规范化 base_url，确保包含 /v1 前缀
+    base_url = re.sub(r"^hhttps://", "https://", base_url)
+    if not re.search(r"/v1/?$", base_url):
+        base_url = base_url.rstrip("/") + "/v1"
+    model = entry.get("model") or "deepseek-chat"
+    return DeepseekConfig(model=model, api_key=api_key, base_url=base_url)
 
 
 def _prompt_from_catalog(key: str, default_text: str) -> str:
@@ -189,8 +229,8 @@ class PipelineState(TypedDict, total=False):
 def generate_subject_slug(state: PipelineState) -> PipelineState:
     """使用轻量模型为 subject 生成英文 kebab-case slug。
 
-    - 默认模型：gemini-2.5-flash（复用现有 Gemini API Key）。
-    - 当 LLM 调用失败或输出异常时，回退到本地 _slugify(subject, "subject")。
+    - 默认模型：deepseek-chat（参考 config.json 中 llms.deepseek-chat）。
+    - 当 LLM 调用失败或输出异常时，先回退 Gemini（若可用），再回退本地 _slugify(subject, "subject").
     """
     logger = logging.getLogger(__name__)
     subject = str(state.get("subject") or "").strip()
@@ -204,33 +244,55 @@ def generate_subject_slug(state: PipelineState) -> PipelineState:
         s = re.sub(r"-+", "-", s).strip("-")
         return s
 
-    # 调用 Gemini（优先用轻量 flash 模型），仅输出 slug
+    # 优先调用 DeepSeek（openai 兼容），失败则尝试 Gemini flash，再失败回退本地
+    tmpl = _prompt_from_catalog(
+        "toc.slug",
+        "你的任务是为一个给定的主题生成一个简洁、全小写、URL友好、用连字符分隔（kebab-case）的英文 slug。\n\n"
+        "约束：\n"
+        "1. 只包含英文字母、数字和连字符'-'。\n"
+        "2. 如果主题是中文或其他语言，请先将其翻译或音译为有意义的英文。\n"
+        "3. 结果必须简短且具有描述性。\n\n"
+        "主题: \"计算机网络原理\"\n"
+        "Slug: computer-network-principles\n\n"
+        "主题: \"八字算命\"\n"
+        "Slug: bazi-divination\n\n"
+        "主题: \"[subject]\"\n"
+        "只输出 slug，不要任何解释或标点：",
+    )
+    prompt = tmpl.replace("[subject]", subject)
+
+    final_slug: str
+    # 1) DeepSeek 尝试
     try:
-        gem_cfg: GeminiConfig = state["gemini"]
-        genai.configure(api_key=gem_cfg.api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        tmpl = _prompt_from_catalog(
-            "toc.slug",
-            "你的任务是为一个给定的主题生成一个简洁、全小写、URL友好、用连字符分隔（kebab-case）的英文 slug。\n\n"
-            "约束：\n"
-            "1. 只包含英文字母、数字和连字符'-'。\n"
-            "2. 如果主题是中文或其他语言，请先将其翻译或音译为有意义的英文。\n"
-            "3. 结果必须简短且具有描述性。\n\n"
-            "主题: \"计算机网络原理\"\n"
-            "Slug: computer-network-principles\n\n"
-            "主题: \"八字算命\"\n"
-            "Slug: bazi-divination\n\n"
-            "主题: \"[subject]\"\n"
-            "只输出 slug，不要任何解释或标点：",
+        cfg = _load_config()
+        ds_cfg = load_deepseek_config(cfg, None)
+        client = OpenAI(base_url=ds_cfg.base_url, api_key=ds_cfg.api_key)
+        resp = client.chat.completions.create(
+            model=ds_cfg.model,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that outputs only short slugs in lowercase kebab-case."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            max_tokens=64,
         )
-        prompt = tmpl.replace("[subject]", subject)
-        resp = model.generate_content(prompt)
-        raw = getattr(resp, "text", "")
+        raw = (resp.choices[0].message.content or "") if (resp and resp.choices) else ""
         slug = _clean_slug(raw)
         final_slug = slug or _slugify(subject, "subject")
     except Exception as e:
-        logger.warning("Slug 生成失败，回退本地规则：%s", e)
-        final_slug = _slugify(subject, "subject")
+        logger.warning("DeepSeek 生成 slug 失败，尝试 Gemini：%s", e)
+        # 2) Gemini 尝试（使用轻量 flash）
+        try:
+            gem_cfg: GeminiConfig = state["gemini"]
+            genai.configure(api_key=gem_cfg.api_key)
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            resp = model.generate_content(prompt)
+            raw = getattr(resp, "text", "")
+            slug = _clean_slug(raw)
+            final_slug = slug or _slugify(subject, "subject")
+        except Exception as e2:
+            logger.warning("Gemini 备选生成 slug 失败，回退本地规则：%s", e2)
+            final_slug = _slugify(subject, "subject")
 
     logger.info("生成 Slug: %s -> %s", subject, final_slug)
     new_state = dict(state)
