@@ -17,16 +17,24 @@
     --print-prompt
 
   - 只跑教材推荐+目录抓取：
-    python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py
-    --stage toc 
-    --subject "XXX" 
-    --top-n 3 
+    python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
+    --subject "Web媒体加密" \
+    --top-n 3 \
+    --print-prompt \
+    --stream \
+    --learning-style principles \
+    --expected-content "主流流媒体平台视频分发的加密方式，如何防止恶意下载" \
+    --log
 
   - 只跑大纲重构：先准备含 tocs 的 JSON，然后执行 
-    python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py 
-    --stage reconstruct 
-    --input path/to/toc.json 
-    --learning-style principles
+    python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
+    --stage reconstruct \
+    --input output/textbook_tocs/web-media-encryption-20251022-185753.json \
+    --expected-content "主流流媒体平台视频分发的加密方式，如何防止恶意下载" \
+    --learning-style deep_preview \
+    --print-prompt \
+    --subject-type theory\
+    --stream
 
   全流程
     python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
