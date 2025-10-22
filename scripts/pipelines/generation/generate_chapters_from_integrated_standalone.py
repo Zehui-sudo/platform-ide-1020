@@ -13,9 +13,10 @@
 
 用法示例：
   python scripts/pipelines/generation/generate_chapters_from_integrated_standalone.py \
-    --input output/integrated_pipeline/web-media-technology-integrated-20251020-163012.json \
+    --input output/integrated_pipeline/web-media-encryption-integrated-20251020-220924.json \
     --config config.json \
     --skip-content-review \
+    --selected-chapters 1,2 \
     --debug
 
 调试模式：
@@ -325,6 +326,14 @@ def select_llm_for_node(cfg: Dict[str, Any], registry: Dict[str, _AsyncLLM], nod
     return registry.get("default")  # type: ignore
 
 
+def _prompt_from_catalog(key: str, default_text: str) -> str:
+    try:
+        from prompts.prompt_loader import get_prompt
+        return get_prompt(key, default_text)
+    except Exception:
+        return default_text
+
+
 # ----------------------------
 # 节点依赖函数（复制自 run_full）
 # ----------------------------
@@ -384,7 +393,10 @@ def _build_contextual_content_prompt(
     prior_context: str = "",
 ) -> str:
     lang = (language or "zh").strip().lower()
-    role = "你是一位世界级的教育家与作家，以其能将复杂、抽象的理论知识变得浅显易懂、引人入胜而闻名。你的天赋在于不仅仅是解释，更是去启发，将错综复杂的概念编织成一个引人入胜的叙事，从而促进读者形成深刻且持久的理解。"
+    role = _prompt_from_catalog(
+        "gen.role",
+        "你是一位世界级的教育家与作家，以其能将复杂、抽象的理论知识变得浅显易懂、引人入胜而闻名。你的天赋在于不仅仅是解释，更是去启发，将错综复杂的概念编织成一个引人入胜的叙事，从而促进读者形成深刻且持久的理解。",
+    )
     head = f"# 课程内容生成任务\n\n{role}\n"
     if path:
         head += f"\n【定位】{path}\n"
@@ -399,13 +411,16 @@ def _build_contextual_content_prompt(
     conts = [c for c in (suggested_contents or []) if isinstance(c, str)]
     conts_part = "\n【核心内容】" + ", ".join(conts) + "\n" if conts else "\n"
 
-    style_part = """
+    style_part = _prompt_from_catalog(
+        "gen.style",
+        """
 【写作风格与深度要求】
 - **类比与具象化**：对于抽象的核心概念，请使用读者生活中可能熟悉的现象或经验进行类比，帮助他们建立直观感受。**重要：确保类比在简化概念的同时，不会牺牲关键的技术精确性。**
 - **背景与叙事**：对于任何一个基础理论、原则或关键思想，请深入挖掘其提出的背景。解释它试图解决什么问题？在此之前的主流观点是什么？它的出现带来了哪些关键性的影响？**对于技术性强的学科，这意味着清晰地阐述其“问题-解决方案-影响”的逻辑链条，而非文学性描述。**
 - **启发性结尾**：在文章末尾，除了总结要点，还应提出一些发人深省的问题，或一个能承上启下的前瞻性观点，以激发读者的好奇心和进一步探索的欲望。
 - **篇幅指导**：为确保内容的深度，每一篇知识点都应被充分地探讨。请力求内容详尽，目标篇幅在 **2500-3500字** 左右。请优先考虑内容的深度与清晰度，而非简洁。
-"""
+""",
+    )
 
     if structure_type == "pipeline":
         ctx_part = (f"\n【已完成的小节内容（Context）】\n> " + prior_context.replace("\n", "\n> ") + "\n") if prior_context else "\n"
@@ -420,7 +435,9 @@ def _build_contextual_content_prompt(
             ctx_part = "\n"
         task = f"\n【你的任务】请严格遵循【写作风格与深度要求】，撰写一篇关于“{section_title}”的独立教学段落。请以【核心内容】为基础，进行详尽地展开与阐述，确保讲解不仅系统、逻辑清晰，而且内容丰富、细节饱满、富有启发性。\n"
 
-    constraints = """
+    constraints = _prompt_from_catalog(
+        "gen.constraints",
+        """
 【输出约束】
 - 使用 Markdown；结构清晰，标题层级合理；
 - 叙事连贯：避免与已给上下文重复；必要时用一句话承接；
@@ -428,7 +445,8 @@ def _build_contextual_content_prompt(
 - 如 Markdown 中涉及代码示例，请用代码块进行声明包裹；
 - 表格中不要出现代码格式的内容；
 - 结尾含简短总结或要点回顾。
-"""
+""",
+    )
     lang_line = f"\n【语言】{'中文' if lang.startswith('zh') else 'English'}\n"
     return head + goal_part + mods_part + conts_part + style_part + ctx_part + task + constraints + lang_line
 
@@ -446,7 +464,10 @@ def _build_theory_opening_prompt(
     all_chapters_struct: List[Dict[str, Any]],
 ) -> str:
     lang = (language or "zh").strip().lower()
-    role = "你是一位世界级的教育家与作家，以其能将复杂、抽象的理论知识变得浅显易懂、引人入胜而闻名。你的天赋在于不仅仅是解释，更是去启发，将错综复杂的概念编织成一个引人入胜的叙事，从而促进读者形成深刻且持久的理解。"
+    role = _prompt_from_catalog(
+        "gen.role",
+        "你是一位世界级的教育家与作家，以其能将复杂、抽象的理论知识变得浅显易懂、引人入胜而闻名。你的天赋在于不仅仅是解释，更是去启发，将错综复杂的概念编织成一个引人入胜的叙事，从而促进读者形成深刻且持久的理解。",
+    )
     head = f"# 课程内容生成任务\n\n{role}\n"
     if path:
         head += f"\n【定位】{path}\n"
@@ -501,7 +522,9 @@ def _build_theory_opening_prompt(
             f"请以【核心内容】为基础，进行详尽地展开与阐述，确保讲解不仅系统、逻辑清晰，而且内容丰富、细节饱满、富有启发性，并为本章后续内容的学习做好铺垫。\n"
         )
 
-    constraints = """
+    constraints = _prompt_from_catalog(
+        "gen.constraints",
+        """
 【输出约束】
 - 使用 Markdown；结构清晰，标题层级合理；
 - 叙事连贯：避免与已给上下文重复；必要时用一句话承接；
@@ -509,7 +532,8 @@ def _build_theory_opening_prompt(
 - 如 Markdown 中涉及代码示例，请用代码块进行声明包裹；
 - 表格中不要出现代码格式的内容；
 - 结尾含简短总结或要点回顾。
-"""
+""",
+    )
     lang_line = f"\n【语言】{'中文' if lang.startswith('zh') else 'English'}\n"
     return head + (context_str + "\n" if context_str else "") + goal_part + mods_part + conts_part + style_part + task + constraints + lang_line
 
@@ -684,7 +708,7 @@ async def _gen_one_point(llm, prompt: str, retries: int, delay: int, debug: bool
 
 
 async def _review_one_point_with_context(llm, point_id: str, content_md: str, peer_points: List[Dict[str, str]], debug: bool = False) -> Dict[str, Any]:
-    review_prompt_template = '''你是资深的技术编辑，你的任务是审查下面的草稿，并以JSON格式提供具体的、可操作的反馈。
+    review_prompt_template = _prompt_from_catalog('review.default', '''你是资深的技术编辑，你的任务是审查下面的草稿，并以JSON格式提供具体的、可操作的反馈。
 
 【审查维度】
 1. 准确性: 内容与代码是否技术上准确？
@@ -718,7 +742,7 @@ async def _review_one_point_with_context(llm, point_id: str, content_md: str, pe
 {content_md}
 
 【你的JSON输出】
-'''
+''')
     peers_lines = "\n".join([f"- {p.get('id', '')}: {p.get('title', '')}" for p in peer_points])
     prompt = review_prompt_template.format(point_id=point_id, peers_lines=peers_lines if peers_lines else '(无)', content_md=content_md)
     if debug:

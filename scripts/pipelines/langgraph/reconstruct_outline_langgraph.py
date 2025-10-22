@@ -831,6 +831,14 @@ PROMPT_INSTRUCTION_TOOLS = r"""
 """
 
 
+def _prompt_from_catalog(key: str, default_text: str) -> str:
+    try:
+        from prompts.prompt_loader import get_prompt
+        return get_prompt(key, default_text)
+    except Exception:
+        return default_text
+
+
 def build_prompt(
     subject: str,
     materials: Dict[str, Any],
@@ -852,7 +860,7 @@ def build_prompt(
 
     if subject_type == "tool":
         # 工具类：材料为可选参考；风格参数不生效
-        text = PROMPT_INSTRUCTION_TOOLS.strip()
+        text = _prompt_from_catalog("reconstruct.tools", PROMPT_INSTRUCTION_TOOLS).strip()
         try:
             text = re.sub(r"\[subject\]", subject, text)
         except Exception:
@@ -874,9 +882,9 @@ def build_prompt(
     # 理论类：按学习风格选择 prompt（deep_preview 使用现有模板；principles 使用新模板）
     style = (learning_style or "deep_preview").strip().lower()
     if style == "principles":
-        text = PROMPT_INSTRUCTION_THEORIES_PRINCIPLES.strip()
+        text = _prompt_from_catalog("reconstruct.theories.principles", PROMPT_INSTRUCTION_THEORIES_PRINCIPLES).strip()
     else:
-        text = PROMPT_INSTRUCTION_THEORIES.strip()
+        text = _prompt_from_catalog("reconstruct.theories.deep_preview", PROMPT_INSTRUCTION_THEORIES).strip()
     try:
         text = re.sub(r"\[subject\]", subject, text)
     except Exception:
@@ -948,7 +956,8 @@ def classify_subject(subject: str, llm: LLMCaller) -> str:
       - 若出错或输出异常，返回以 'error:' 开头的错误信息字符串（不回退为 'theory'）。
     """
     try:
-        prompt = PROMPT_CLASSIFY_SUBJECT.replace("[subject]", subject)
+        tmpl = _prompt_from_catalog("reconstruct.classify_subject", PROMPT_CLASSIFY_SUBJECT)
+        prompt = tmpl.replace("[subject]", subject)
         resp = llm.complete(prompt, max_tokens=1096)
     except Exception as e:
         return f"error: classify failed: {e}"

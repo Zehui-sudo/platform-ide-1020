@@ -148,6 +148,14 @@ def load_kimi_config(cfg: Dict[str, Any], key_hint: Optional[str]) -> KimiConfig
     return KimiConfig(model=model, api_key=api_key, base_url=base_url)
 
 
+def _prompt_from_catalog(key: str, default_text: str) -> str:
+    try:
+        from prompts.prompt_loader import get_prompt
+        return get_prompt(key, default_text)
+    except Exception:
+        return default_text
+
+
 def _parse_json_str(text: str) -> Any:
     """最小 JSON 解析：支持一次代码块围栏回退（```json ... ```）。"""
     text = (text or "").strip()
@@ -201,7 +209,8 @@ def generate_subject_slug(state: PipelineState) -> PipelineState:
         gem_cfg: GeminiConfig = state["gemini"]
         genai.configure(api_key=gem_cfg.api_key)
         model = genai.GenerativeModel("gemini-2.5-flash")
-        prompt = (
+        tmpl = _prompt_from_catalog(
+            "toc.slug",
             "你的任务是为一个给定的主题生成一个简洁、全小写、URL友好、用连字符分隔（kebab-case）的英文 slug。\n\n"
             "约束：\n"
             "1. 只包含英文字母、数字和连字符'-'。\n"
@@ -211,9 +220,10 @@ def generate_subject_slug(state: PipelineState) -> PipelineState:
             "Slug: computer-network-principles\n\n"
             "主题: \"八字算命\"\n"
             "Slug: bazi-divination\n\n"
-            f"主题: \"{subject}\"\n"
-            "只输出 slug，不要任何解释或标点："
+            "主题: \"[subject]\"\n"
+            "只输出 slug，不要任何解释或标点：",
         )
+        prompt = tmpl.replace("[subject]", subject)
         resp = model.generate_content(prompt)
         raw = getattr(resp, "text", "")
         slug = _clean_slug(raw)
@@ -239,32 +249,32 @@ def recommend_textbooks(state: PipelineState) -> PipelineState:
         logger.info("[1/2] 调用 Gemini 推荐教材 … 模型=%s 主题=%s | 学习者期望已提供", gem_cfg.model, subject)
     else:
         logger.info("[1/2] 调用 Gemini 推荐教材 … 模型=%s 主题=%s", gem_cfg.model, subject)
-    prompt = f"""
-你是资深课程设计专家。请基于全球范围内的经典/权威/广泛采用的教材，推荐与主题“{subject}”最相关的教材。
-
-如果提供了学习者的特定期望或偏好，请在不偏离“全球经典/权威”前提下，优先选择更契合这些期望的教材或版本（如更适合某语种学习、包含某类章节、偏向某些应用/任务等）。
-{('学习者期望：\n- ' + expected + '\n') if expected else ''}
-
-输出要求：严格 JSON，且只输出以下结构：
-{{
-  "textbooks": [
-    {{
-      "title": "书名",
-      "authors": ["作者1", "作者2"],
-      "edition": "版次或年份版",
-      "publisher": "出版社",
-      "year": 2020,
-      "isbn13": "可选",
-      "official_url": "可选，出版社或课程官网"
-    }}
-  ]
-}}
-
-约束：
-- 仅输出 JSON，不要附带解释或 Markdown。
-- 关注“全球经典教材”，优先列出高影响力版本（如英文原版）。
-- 一共推荐5本，优先推荐最相关的3本教材，按相关度降序输出。
-"""
+    prompt_tmpl = _prompt_from_catalog(
+        "toc.recommend",
+        "你是资深课程设计专家。请基于全球范围内的经典/权威/广泛采用的教材，推荐与主题“[subject]”最相关的教材。\n\n"
+        "如果提供了学习者的特定期望或偏好，请在不偏离“全球经典/权威”前提下，优先选择更契合这些期望的教材或版本（如更适合某语种学习、包含某类章节、偏向某些应用/任务等）。\n\n"
+        "输出要求：严格 JSON，且只输出以下结构：\n"
+        "{\n"
+        "  \"textbooks\": [\n"
+        "    {\n"
+        "      \"title\": \"书名\",\n"
+        "      \"authors\": [\"作者1\", \"作者2\"],\n"
+        "      \"edition\": \"版次或年份版\",\n"
+        "      \"publisher\": \"出版社\",\n"
+        "      \"year\": 2020,\n"
+        "      \"isbn13\": \"可选\",\n"
+        "      \"official_url\": \"可选，出版社或课程官网\"\n"
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        "约束：\n"
+        "- 仅输出 JSON，不要附带解释或 Markdown。\n"
+        "- 关注“全球经典教材”，优先列出高影响力版本（如英文原版）。\n"
+        "- 一共推荐5本，优先推荐最相关的3本教材，按相关度降序输出。\n",
+    )
+    prompt = prompt_tmpl.replace("[subject]", subject)
+    if expected:
+        prompt = prompt + "\n" + ("学习者期望：\n- " + expected + "\n")
 
     if state.get("print_prompt"):
         print("========== DEBUG: Gemini Prompt Begin ==========", file=sys.stderr)
@@ -306,42 +316,46 @@ def _kimi_chat_once(client: OpenAI, model: str, messages: List[Dict[str, Any]]):
 def _fetch_one_toc(kimi_cfg: KimiConfig, book: Dict[str, Any], print_prompt: bool = False) -> Dict[str, Any]:
     logger = logging.getLogger(__name__)
     client = OpenAI(base_url=kimi_cfg.base_url, api_key=kimi_cfg.api_key)
-    sys_prompt = (
-        "你是 Kimi，具备联网搜索能力。请使用内置 $web_search 工具检索并返回指定教材的完整目录。"
-        "严格输出 JSON，不要解释或 Markdown。"
+    sys_prompt = _prompt_from_catalog(
+        "kimi.system",
+        "你是 Kimi，具备联网搜索能力。请使用内置 $web_search 工具检索并返回指定教材的完整目录。严格输出 JSON，不要解释或 Markdown。",
     )
     title = str(book.get("title", "")).strip()
     authors = ", ".join(book.get("authors", []) or [])
     publisher = str(book.get("publisher", "")).strip()
-    ask = (
-        "请检索并返回这本教材的完整目录"
-        "输出时务必按照类似以下格式进行输出，具体到每个章节下的小节，保留原有层级与顺序："
-        "## 第1章：LangGraph入门"
-        "### 1.1 核心概念"
-        "#### 1.1.1 什么是 LangGraph? (解决什么问题)"
-        "#### 1.1.2 State (状态): 图的记忆"
-        "#### 1.1.3 Nodes (节点): 工作单元"
-        "#### 1.1.4 Edges (边): 连接流程"
-        "### 1.2 第一个 LangGraph 应用"
-        "#### 1.2.1 定义 StateGraph"
-        "#### 1.2.2 添加节点 (Nodes)"
-        "#### 1.2.3 设置入口和出口 (Entry/Finish Point)"
-        "#### 1.2.4 编译与运行 (compile, stream)"
-
-        "## 第2章：构建动态流程 "
-        "### 2.1 条件分支"
-        "#### 2.1.1 条件边的使用"
-        "#### 2.1.2 实现一个简单的路由 Agent"
-        "### 2.2 循环与迭代"
-        "#### 2.2.1 在图中创建循环"
-        "#### 2.2.2 案例: 多轮问答或自我修正"
+    ask_tmpl = _prompt_from_catalog(
+        "kimi.user",
+        "请检索并返回这本教材的完整目录输出时务必按照类似以下格式进行输出，具体到每个章节下的小节，保留原有层级与顺序：\n"
+        "## 第1章：LangGraph入门\n"
+        "### 1.1 核心概念\n"
+        "#### 1.1.1 什么是 LangGraph? (解决什么问题)\n"
+        "#### 1.1.2 State (状态): 图的记忆\n"
+        "#### 1.1.3 Nodes (节点): 工作单元\n"
+        "#### 1.1.4 Edges (边): 连接流程\n"
+        "### 1.2 第一个 LangGraph 应用\n"
+        "#### 1.2.1 定义 StateGraph\n"
+        "#### 1.2.2 添加节点 (Nodes)\n"
+        "#### 1.2.3 设置入口和出口 (Entry/Finish Point)\n"
+        "#### 1.2.4 编译与运行 (compile, stream)\n\n"
+        "## 第2章：构建动态流程 \n"
+        "### 2.1 条件分支\n"
+        "#### 2.1.1 条件边的使用\n"
+        "#### 2.1.2 实现一个简单的路由 Agent\n"
+        "### 2.2 循环与迭代\n"
+        "#### 2.2.1 在图中创建循环\n"
+        "#### 2.2.2 案例: 多轮问答或自我修正\n"
         "只输出以下 JSON 对象：{\n"
         "  \"book\": {\"title\": string, \"authors\": [string], \"publisher\": string},\n"
         "  \"toc\": [string 或 对象，按原始目录顺序],\n"
         "  \"source\": string\n"
         "}\n"
-        "目标教材: "
-        f"《{title}》 {authors} · {publisher}"
+        "目标教材: 《[title]》 [authors] · [publisher]",
+    )
+    ask = (
+        ask_tmpl
+        .replace("[title]", title)
+        .replace("[authors]", authors)
+        .replace("[publisher]", publisher)
     )
     messages: List[Dict[str, Any]] = [
         {"role": "system", "content": sys_prompt},
