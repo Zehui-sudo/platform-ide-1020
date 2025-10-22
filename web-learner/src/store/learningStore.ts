@@ -282,7 +282,6 @@ export const useLearningStore = create<LearningState & LearningActions>()(
       loadedPaths: {}, // 初始化为空对象
       availableSubjects: undefined,
       subjectPathMap: undefined,
-      subjectIcons: undefined,
       loading: {
         path: false,
         section: false,
@@ -319,8 +318,8 @@ export const useLearningStore = create<LearningState & LearningActions>()(
         try {
           const res = await fetch('/api/learning-config');
           if (!res.ok) throw new Error('Failed to fetch learning-config');
-          const data = await res.json() as { subjects: string[]; pathMap: Partial<Record<string, string|null>>; iconMap?: Record<string, string>; labelMap?: Record<string, string> };
-          set({ availableSubjects: data.subjects, subjectPathMap: data.pathMap, subjectIcons: data.iconMap || {}, subjectLabels: data.labelMap || {} });
+          const data = await res.json() as { subjects: string[]; pathMap: Partial<Record<string, string|null>>; labelMap?: Record<string, string> };
+          set({ availableSubjects: data.subjects, subjectPathMap: data.pathMap, subjectLabels: data.labelMap || {} });
         } catch (e) {
           // If discovery fails, leave state undefined and let downstream handlers fallback
           console.warn('discoverSubjects failed', e);

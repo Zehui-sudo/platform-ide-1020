@@ -108,7 +108,6 @@ export interface LearningState {
   // Auto-discovery of available languages and their learning-path locations
   availableSubjects?: string[];
   subjectPathMap?: Partial<Record<string, string | null>>;
-  subjectIcons?: Record<string, string>; // 存储学科对应的图标路径
   subjectLabels?: Record<string, string>; // 学习路径的人类可读名称（来自 learning-path H1）
   loading: {
     path: boolean;

@@ -68,5 +68,6 @@
   "retry_times": 3,
   "retry_delay": 10,
   "max_parallel_requests": 100,
-  "auto_apply_mode": "safe"
+  "auto_apply_mode": "safe",
+  "sanitize_mermaid": false
 }

@@ -47,9 +47,7 @@ export function LearnNavBar() {
   const setFontFamily = useLearningStore((s) => s.setFontFamily);
   const availableSubjects = useLearningStore((state) => state.availableSubjects);
   const subjectLabels = useLearningStore((state) => state.subjectLabels);
-  // Avoid creating a new object inside the selector to satisfy
-  // React 19 useSyncExternalStore server snapshot caching constraints
-  const subjectIcons = useLearningStore((state) => state.subjectIcons);
+  // Icons are no longer used in the subject selector
 
   const subjectItems = useMemo(() => {
     const codes = (availableSubjects && availableSubjects.length > 0)
@@ -58,16 +56,19 @@ export function LearnNavBar() {
     const toFallbackLabel = (v: string) => (
       v === 'astrology' ? '占星学' : (v === 'langgraph' ? 'LangGraph' : (v.charAt(0).toUpperCase() + v.slice(1)))
     );
-    const toLogo = (v: string) => {
-      // 使用动态图标映射，如果不存在则使用默认图标
-      return (hydrated && subjectIcons && subjectIcons[v]) ? subjectIcons[v] : '/course_icon.svg';
-    };
-    return codes.map(v => ({
+    const items = codes.map(v => ({
       value: v as string,
-      label: (hydrated && subjectLabels && subjectLabels[v]) ? subjectLabels[v] : toFallbackLabel(v),
-      logo: toLogo(v)
+      label: (hydrated && subjectLabels && subjectLabels[v]) ? subjectLabels[v] : toFallbackLabel(v)
     }));
-  }, [availableSubjects, subjectIcons, subjectLabels, hydrated]);
+
+    // Sort: English-first labels A-Z, then Chinese/non-English by locale
+    const isEnglish = (s: string) => /^[A-Za-z]/.test(s.trim());
+    const collatorEn = new Intl.Collator('en', { sensitivity: 'base' });
+    const collatorZh = new Intl.Collator('zh-Hans', { sensitivity: 'base' });
+    const enItems = items.filter(it => isEnglish(it.label)).sort((a, b) => collatorEn.compare(a.label, b.label));
+    const zhItems = items.filter(it => !isEnglish(it.label)).sort((a, b) => collatorZh.compare(a.label, b.label));
+    return [...enItems, ...zhItems];
+  }, [availableSubjects, subjectLabels, hydrated]);
 
   const selectedSubject = subjectItems.find(l => l.value === (currentPath?.subject || ''));
 
@@ -184,16 +185,7 @@ export function LearnNavBar() {
             <SelectTrigger className="w-[180px] md:w-[200px]">
               <div className="flex items-center gap-2 min-w-0">
                 {selectedSubject ? (
-                  <>
-                    <Image
-                      src={selectedSubject.logo}
-                      alt={selectedSubject.label}
-                      width={16}
-                      height={16}
-                      className="flex-shrink-0"
-                    />
-                    <span className="truncate">{selectedSubject.label}</span>
-                  </>
+                  <span className="truncate font-bold">{selectedSubject.label}</span>
                 ) : (
                   <SelectValue placeholder="选择语言" />
                 )}
@@ -206,16 +198,7 @@ export function LearnNavBar() {
                   value={lang.value}
                   className="whitespace-normal min-h-auto pr-8"
                 >
-                  <div className="flex items-start gap-2">
-                    <Image
-                      src={lang.logo}
-                      alt={lang.label}
-                      width={16}
-                      height={16}
-                      className="flex-shrink-0 mt-0.5"
-                    />
-                    <span className="leading-tight">{lang.label}</span>
-                  </div>
+                  <span className="leading-tight">{lang.label}</span>
                 </SelectItem>
               ))}
             </SelectContent>

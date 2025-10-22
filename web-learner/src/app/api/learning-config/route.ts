@@ -8,7 +8,6 @@ export async function GET() {
 
   const subjects: string[] = [];
   const pathMap: Record<string, string | null> = Object.create(null);
-  const iconMap: Record<string, string> = Object.create(null);
   const labelMap: Record<string, string> = Object.create(null);
 
   // Helper function to find learning path file for a language
@@ -28,39 +27,7 @@ export async function GET() {
     return null;
   };
 
-  // Helper function to find icon for a language
-  const findIconForLanguage = (lang: string): string => {
-    const iconExtensions = ['.svg', '.png'];
-    const iconNames = [
-      `${lang}-logo`,
-      `${lang}-icon`,
-      `${lang}`,
-      lang
-    ];
-
-    // First try to find in content subdirectory
-    for (const iconName of iconNames) {
-      for (const ext of iconExtensions) {
-        const iconPath = path.join(contentRoot, lang, `${iconName}${ext}`);
-        if (fs.existsSync(iconPath)) {
-          return `/content/${lang}/${iconName}${ext}`;
-        }
-      }
-    }
-
-    // Fallback to public root directory
-    for (const iconName of iconNames) {
-      for (const ext of iconExtensions) {
-        const iconPath = path.join(publicDir, `${iconName}${ext}`);
-        if (fs.existsSync(iconPath)) {
-          return `/${iconName}${ext}`;
-        }
-      }
-    }
-
-    // Final fallback to default icon
-    return '/course_icon.svg';
-  };
+  // No icon discovery needed anymore
 
   try {
     const entries = fs.readdirSync(contentRoot, { withFileTypes: true });
@@ -75,8 +42,6 @@ export async function GET() {
         if (learningPathInfo) {
           subjects.push(lang);
           pathMap[lang] = learningPathInfo.publicPath;
-          // Find icon for this language
-          iconMap[lang] = findIconForLanguage(lang);
           // Derive human-readable label from the first H1 in the learning path
           try {
             const md = fs.readFileSync(learningPathInfo.absPath, 'utf8');
@@ -91,7 +56,6 @@ export async function GET() {
           } catch {}
         } else {
           pathMap[lang] = null;
-          iconMap[lang] = '/course_icon.svg';
         }
       }
     }
@@ -99,5 +63,5 @@ export async function GET() {
     // ignore and return empty list
   }
 
-  return NextResponse.json({ subjects, pathMap, iconMap, labelMap });
+  return NextResponse.json({ subjects, pathMap, labelMap });
 }
