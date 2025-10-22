@@ -46,29 +46,14 @@
       "api_key": "d31c9bd813374660a2d8bc23b9940854.pAjNynqz5yYZSpFn",
       "model": "glm-4.6",
       "temperature": 0.6
-    },
-      "gemini-2.5-pro-zhongzhuan": {
-      "provider": "openai_compat",
-      "base_url": "https://new.wuxuai.com/v1",
-      "api_key": "sk-KkH2bitKCBDDPFQI7KkmPws7OBFIENyeeyTkgf56bx1I0nCs",
-      "model": "[渠道3]满血gemini-2.5-pro",
-      "temperature": 0.6
     }
   },
   "node_llm": {
     "default": "deepseek-chat",
-    "generate_slug": "gemini-2.5-flash",
-    "generate_outline.stage1": "gemini-2.5-pro",
-    "generate_outline.stage2": "gemini-2.5-pro",
-    "generate_outline.stage3": "gemini-2.5-pro",
-    "generate_outline.review": "gemini-2.5-flash",
-    "generate_outline": "gemini-2.5-pro",
-    "generate_prompt_template": "gemini-2.5-pro",
-    "select_prompt_template": "gemini-2.5-pro",
+    "generate_subject_slug": "deepseek-chat",
+    "classify_subject": "gemini-2.5-flash",
     "generate_and_review_by_chapter.generate": "gemini-2.5-pro",
     "generate_and_review_by_chapter.review": "gemini-2.5-flash",
-    "generate_and_review_parallel.generate": "qwen-3-max",
-    "generate_and_review_parallel.review": "gemini-2.5-pro",
     "propose_and_apply_fixes.propose": "gemini-2.5-pro"
   },
   "max_tokens": 32768,
