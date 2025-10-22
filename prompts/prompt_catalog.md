@@ -85,21 +85,147 @@ Classify the following subject. Respond with a single word: `theory` or `tool`.
             `["code_example", "common_mistake_warning", "mermaid diagram", "checklist", "comparison", "case_study"]`
         - `suggested_contents`: 该知识点中**建议包含的核心内容**清单（数组）。
 5.  **格式化输出:** 确保最终输出是一个结构严谨、格式正确的单一JSON对象，代表这一个章节的完整结构。不要包含任何多余解释性的文字
+
+**【输出范例 (JSON)】**
+```json
+{
+    "title": "Natural Language Processing: From Foundations to Large Models",
+    "id": "cs-nlp-301",
+    "groups": [
+        {
+            "title": "第一章：基础篇 · 让机器理解语言的基石",
+            "id": "nlp-ch-1",
+            "structure_type": "pipeline",
+            "sections": [
+                {
+                    "title": "1.1 根本问题：为何机器处理文本如此困难？",
+                    "id": "nlp-sec-1-1-1",
+                    "relation_to_previous": "first_in_sequence",
+                    "primary_goal": "通过展示语言的歧义性、非结构化和多样性，阐明自然语言处理（NLP）领域的核心挑战，并建立起将文本转化为机器可处理格式的必要性。",
+                    "suggested_modules": [
+                        "case_study",
+                        "mermaid diagram"
+                    ],
+                    "suggested_contents": [
+                        "**核心概念：歧义性 (Ambiguity)** - 展示词法歧义 (e.g., 'bank'), 句法歧义 (e.g., 'I saw a man with a telescope'), 和语义歧义的实例。",
+                        "**核心挑战：非结构化特性** - 对比非结构化的自然语言与结构化的数据库表格，强调从文本中提取信息的难度。",
+                        "**核心挑战：上下文依赖** - 解释同一个词在不同上下文中意义完全不同，引出上下文理解的重要性。",
+                        "**基本框架** - 提出NLP任务的基本处理流程：原始文本 -> 预处理 -> 特征表示 -> 模型建模 -> 任务输出。"
+                    ]
+                },
+                {
+                    "title": "1.2 文本预处理：从原始语料到结构化词元流",
+                    "id": "nlp-sec-1-1-2",
+                    "relation_to_previous": "builds_on",
+                    "primary_goal": "介绍作为所有NLP任务起点的文本预处理流水线，包括分词（Tokenization）、规范化（Normalization）和过滤（Filtering）等关键步骤及其实现方法。",
+                    "suggested_modules": [
+                        "code_example",
+                        "checklist",
+                        "common_mistake_warning"
+                    ],
+                    "suggested_contents": [
+                        "**分词 (Tokenization)** - 讲解词分词、句子分词，并简要介绍更高级的子词分词（如BPE），并讨论其对处理未登录词的优势。",
+                        "**规范化 (Normalization)** - 详细对比词干提取 (Stemming) 和词形还原 (Lemmatization) 的区别，并提供具体例子 (e.g., 'studies' -> 'studi' vs. 'study')。",
+                        "**过滤 (Filtering)** - 解释停用词 (Stop Words) 移除的概念，并讨论何时应该（或不应该）移除停用词。",
+                        "**代码实践** - 提供使用NLTK或spaCy库完成一套完整预处理流程的Python代码片段。"
+                    ]
+                }
+            ]
+        },
+        {
+            "title": "第二章：文本表示 · 将词语转化为向量",
+            "id": "nlp-ch-2",
+            "structure_type": "toolbox",
+            "sections": [
+                {
+                    "title": "2.1 核心思想：分布式表示假说",
+                    "id": "nlp-sec-2-1-1",
+                    "relation_to_previous": "first_in_sequence",
+                    "primary_goal": "解释将词语映射到向量空间的核心思想，并引入“一个词的含义由其上下文决定”的分布式假说，作为理解现代词向量模型的基础。",
+                    "suggested_modules": [
+                        "mermaid diagram"
+                    ],
+                    "suggested_contents": [
+                        "**核心引言** - 引用J.R. Firth的名言：'You shall know a word by the company it keeps.'",
+                        "**向量空间类比** - 使用2D/3D图示展示词向量关系，例如著名的 `vector('King') - vector('Man') + vector('Woman') ≈ vector('Queen')`。",
+                        "**分布式 vs. 符号表示** - 对比词向量（分布式）与One-Hot编码（符号式）的差异，强调分布式表示的语义捕捉能力。"
+                    ]
+                },
+                {
+                    "title": "2.2 工具一 (统计方法)：TF-IDF与词袋模型",
+                    "id": "nlp-sec-2-2-1",
+                    "relation_to_previous": "tool_in_toolbox",
+                    "primary_goal": "详细拆解词袋模型（BoW）和TF-IDF的计算原理，并分析它们作为稀疏、离散表示方法的优势（简单、可解释）与核心局限（无法捕捉语义、维度灾难）。",
+                    "suggested_modules": [
+                        "code_example",
+                        "comparison"
+                    ],
+                    "suggested_contents": [
+                        "**词袋模型 (BoW)** - 解释如何将一个句子或文档表示为一个忽略语序的词频向量。",
+                        "**TF-IDF计算** - 分步讲解词频 (Term Frequency) 和逆文档频率 (Inverse Document Frequency) 的计算公式和直觉含义。",
+                        "**动手计算** - 提供一个包含3-4个短文档的小型语料库，手动计算其中某个词的TF-IDF值。",
+                        "**优劣分析** - 总结其优点（简单高效）和缺点（稀疏性、维度灾难、无语义信息）。"
+                    ]
+                },
+                {
+                    "title": "2.3 工具二 (预测方法)：静态词向量 (Word2Vec & GloVe)",
+                    "id": "nlp-sec-2-2-2",
+                    "relation_to_previous": "tool_in_toolbox",
+                    "primary_goal": "深入讲解Word2Vec（包括Skip-gram和CBOW变体）和GloVe的核心工作原理，阐明它们如何通过预测上下文来学习捕捉词汇语义关系的密集向量。",
+                    "suggested_modules": [
+                        "code_example",
+                        "comparison",
+                        "case_study"
+                    ],
+                    "suggested_contents": [
+                        "**Word2Vec核心原理** - 使用图示解释Skip-gram（中心词预测上下文）和CBOW（上下文预测中心词）的神经网络结构。",
+                        "**GloVe核心原理** - 解释GloVe如何结合全局词-词共现矩阵的统计信息与预测方法的优点。",
+                        "**代码实践** - 展示如何加载预训练的Word2Vec或GloVe模型，并用它来寻找近义词或完成词汇类比任务。",
+                        "**可视化** - 使用t-SNE等降维方法可视化词向量空间，直观感受语义相近的词在空间中聚集的现象。"
+                    ]
+                },
+                {
+                    "title": "2.4 局限性：静态词向量无法解决的问题",
+                    "id": "nlp-sec-2-2-3",
+                    "relation_to_previous": "builds_on",
+                    "primary_goal": "通过“一词多义”等具体案例，揭示所有静态词向量方法的共同缺陷——无法根据上下文动态调整词义，为后续引入上下文相关的表示方法埋下伏笔。",
+                    "suggested_modules": [
+                        "common_mistake_warning"
+                    ],
+                    "suggested_contents": [
+                        "**“一词多义”问题** - 用'bank'（银行/河岸）或'stick'（棍子/坚持）的例子，说明静态词向量无法区分同一个词在不同语境下的含义。",
+                        "**上下文无关** - 强调静态词向量为每个词生成一个固定的向量，无论其上下文如何变化。",
+                        "**引出下一章** - 明确指出解决此问题的关键在于模型需要具备理解和记忆上下文的能力。"
+                    ]
+                }
+            ]
+        }
+    ]
+}
 ```
 
 ### reconstruct.theories.principles
 ```text
 你是一位顶尖的课程设计师和该领域的专家。你的核心任务是基于以下提供的三份世界顶级教材的目录，为**本科大三学生**设计一份全面而深入的入门课程大纲。
 
-【核心目标】
-新大纲旨在帮助学习者构建一个**“T型知识结构”**。他们不仅要掌握**[subject]**领域从问题到解决方案的**核心叙事主线（T的横向）**，还必须深入理解每个关键节点上的**核心模型、算法或实现机制（T的纵向）**。学完后，他们应具备分析复杂问题、选择合适模型、并为后续项目实战打下坚实基础的能力。
+**【核心目标】**
+新目录旨在帮助学习者快速构建对**[subject]**核心原理的**概念脚手架（Conceptual Scaffold）**。学完后，他们应能运用所学知识解释该领域的基本现象，并为后续的深入学习打下坚实、结构化的基础。
 
-【原则要求（原理学习 Principles）】
-1. **以“原理”为中心：** 每章必须围绕一个**根本问题**（如“如何表示意义？”、“如何捕捉序列依赖？”）展开，并在回答这一问题的过程中逐步引入关键模型或机制（如词向量、RNN、Transformer 等）。
-2. **结构化剖解：** 对每个关键机制，按照**概念 → 原理 → 机制 → 变体 → 应用**的结构展开。
-3. **必要而克制的历史：** 历史背景仅作为理解动机的辅助，不可喧宾夺主；主要篇幅应聚焦于机制与原理。
-4. **联系应用：** 每个关键机制必须配套一个**典型任务或应用场景**，阐明“何时何地使用”。
-5. **深度优先：** 宁可少而精，不要面面俱到；优先保证主线关键点的深入理解。
+**【原则要求】**
+1.  **遵循80/20原则，聚焦核心**：
+    *   专注于阐释该领域中，能够解释80%现象的20%核心公理、模型或理论。
+    *   **必须排除**：1）历史上重要但已过时的细节；2）过于细分的专业分支内容；3）复杂的数学推导或非必要的实现细节。
+    *   重点应放在该领域的**第一性原理（First Principles）、核心思想（Core Ideas）和分析框架（Analytical Frameworks）**上，而非零散的知识点。
+
+2.  **构建‘问题-解决方案’的逻辑框架**：
+    *   目录结构需清晰地反映该领域的**核心结构（例如：从宏观到微观，从理论到应用，按时间线发展）**。
+    *   每一章节都应以该领域的一个**根本性问题（Fundamental Question）**为驱动（例如，“社会财富是如何创造和分配的？” -> 经济学中的生产与分配理论）。
+    *   **特别强调**不同概念之间的内在逻辑和依赖关系，让知识形成一个连贯、自洽的体系。
+
+3.  **强调‘解释性知识’与现实世界的联系**：
+    *   最终目标是让学习者获得**‘解释性知识’（Explanatory Knowledge）**，使他们能够用学科视角**分析和解释**现实世界中的相关现象，而不是进行专业级别的操作或计算。
+    *   每个核心概念都必须与一个**具体、可感知的现实案例或应用场景强绑定**（例如，讲解“机会成本”时，要关联到“选择读研而非工作的得失”）。
+    *   鼓励在章节命名和内容描述中使用**生动、恰当的类比**，以降低非专业人士的认知门槛，并建立直观理解。
 
 请根据以上原则，审阅并整合以下提供的三本教材目录，输出一份全新的、符合要求的入门课程目录：
 
@@ -107,20 +233,147 @@ Classify the following subject. Respond with a single word: `theory` or `tool`.
 
 学习者期望（可选）
 
-【设计要求】
+**【设计要求】**
 在你的设计中，必须严格遵循以下两种原子结构模型：
 
 *   **流水线 (Pipeline):**
-    *   定义：一系列具有**强时序依赖**的步骤，每一步都**建立在前一步的结果之上**，旨在完成一个**明确的整体任务**。
-*   **工具箱 (Toolbox):**
-    *   定义：一组围绕**共同主题或目标**，但彼此**相对独立**的知识点。
+    *   **定义:** 一系列具有**强时序性或强依赖性**的知识点。它们通常描述一个连续的过程、工作流或逻辑推演。
+    *   **关键特征:** 前一个知识点的**输出**是后一个知识点的**输入**。学习顺序**几乎不可更改**。
+    *   **例子:** 文本预处理流程、数学定理的证明步骤、一个算法的执行过程。
 
-【构建步骤】
-1. 分析与分组；
-2. 设计微观结构；
-3. 精炼标题；
-4. 注入元数据（同 deep_preview 版说明中的字段与约束）。
-5. 格式化输出为单一 JSON 对象。
+*   **工具箱 (Toolbox):**
+    *   **定义:** 一组围绕**共同主题或目标**，但彼此**相对独立**的知识点。
+    *   **关键特征:** 知识点之间没有严格的顺序依赖，可以并行学习或按任意顺序学习。它们是解决相关问题的不同方法、工具或概念。
+    *   **例子:** Python的各种数据结构、机器学习的各种分类算法、CSS的各种选择器。
+
+**【构建步骤】**
+1.  **分析与分组:** 仔细阅读输入的知识点列表。识别出哪些知识点可以串联成“流水线”，哪些可以归类到不同的“工具箱”中，形成小节(Group)。
+2.  **设计微观结构:** 在每个小节内部，排列知识点（Section）的顺序，确保逻辑通顺。
+3.  **精炼标题:** 为每个小节和知识点撰写清晰、简洁且具有引导性的标题。
+4.  **注入元数据 (关键):** 在最终的JSON结构中，必须为每个小节（Group）和知识点（Section）添加以下元数据：
+    *   为每个**小节 (Group)** 添加 `structure_type: "pipeline" | "toolbox"` 字段。
+        - `primary_goal`: 用一句话清晰地定义该知识点的**核心内容目标**。它应精准描述“这节内容需要讲清楚什么核心问题”或“它要从什么角度去写”。
+        - `suggested_modules`: 在正常的文字阐述之外，可以额外使用的**增强表达形式**清单（数组，允许从以下枚举中挑选）：
+            `["code_example", "common_mistake_warning", "mermaid diagram", "checklist", "comparison", "case_study"]`
+        - `suggested_contents`: 该知识点中**建议包含的核心内容**清单（数组）。
+5.  **格式化输出:** 确保最终输出是一个结构严谨、格式正确的单一JSON对象，代表这一个章节的完整结构。不要包含任何多余解释性的文字
+        
+**【输出范例 (JSON)】**
+```json
+{
+    "title": "Natural Language Processing: From Foundations to Large Models",
+    "id": "cs-nlp-301",
+    "groups": [
+        {
+            "title": "第一章：基础篇 · 让机器理解语言的基石",
+            "id": "nlp-ch-1",
+            "structure_type": "pipeline",
+            "sections": [
+                {
+                    "title": "1.1 根本问题：为何机器处理文本如此困难？",
+                    "id": "nlp-sec-1-1-1",
+                    "relation_to_previous": "first_in_sequence",
+                    "primary_goal": "通过展示语言的歧义性、非结构化和多样性，阐明自然语言处理（NLP）领域的核心挑战，并建立起将文本转化为机器可处理格式的必要性。",
+                    "suggested_modules": [
+                        "case_study",
+                        "mermaid diagram"
+                    ],
+                    "suggested_contents": [
+                        "**核心概念：歧义性 (Ambiguity)** - 展示词法歧义 (e.g., 'bank'), 句法歧义 (e.g., 'I saw a man with a telescope'), 和语义歧义的实例。",
+                        "**核心挑战：非结构化特性** - 对比非结构化的自然语言与结构化的数据库表格，强调从文本中提取信息的难度。",
+                        "**核心挑战：上下文依赖** - 解释同一个词在不同上下文中意义完全不同，引出上下文理解的重要性。",
+                        "**基本框架** - 提出NLP任务的基本处理流程：原始文本 -> 预处理 -> 特征表示 -> 模型建模 -> 任务输出。"
+                    ]
+                },
+                {
+                    "title": "1.2 文本预处理：从原始语料到结构化词元流",
+                    "id": "nlp-sec-1-1-2",
+                    "relation_to_previous": "builds_on",
+                    "primary_goal": "介绍作为所有NLP任务起点的文本预处理流水线，包括分词（Tokenization）、规范化（Normalization）和过滤（Filtering）等关键步骤及其实现方法。",
+                    "suggested_modules": [
+                        "code_example",
+                        "checklist",
+                        "common_mistake_warning"
+                    ],
+                    "suggested_contents": [
+                        "**分词 (Tokenization)** - 讲解词分词、句子分词，并简要介绍更高级的子词分词（如BPE），并讨论其对处理未登录词的优势。",
+                        "**规范化 (Normalization)** - 详细对比词干提取 (Stemming) 和词形还原 (Lemmatization) 的区别，并提供具体例子 (e.g., 'studies' -> 'studi' vs. 'study')。",
+                        "**过滤 (Filtering)** - 解释停用词 (Stop Words) 移除的概念，并讨论何时应该（或不应该）移除停用词。",
+                        "**代码实践** - 提供使用NLTK或spaCy库完成一套完整预处理流程的Python代码片段。"
+                    ]
+                }
+            ]
+        },
+        {
+            "title": "第二章：文本表示 · 将词语转化为向量",
+            "id": "nlp-ch-2",
+            "structure_type": "toolbox",
+            "sections": [
+                {
+                    "title": "2.1 核心思想：分布式表示假说",
+                    "id": "nlp-sec-2-1-1",
+                    "relation_to_previous": "first_in_sequence",
+                    "primary_goal": "解释将词语映射到向量空间的核心思想，并引入“一个词的含义由其上下文决定”的分布式假说，作为理解现代词向量模型的基础。",
+                    "suggested_modules": [
+                        "mermaid diagram"
+                    ],
+                    "suggested_contents": [
+                        "**核心引言** - 引用J.R. Firth的名言：'You shall know a word by the company it keeps.'",
+                        "**向量空间类比** - 使用2D/3D图示展示词向量关系，例如著名的 `vector('King') - vector('Man') + vector('Woman') ≈ vector('Queen')`。",
+                        "**分布式 vs. 符号表示** - 对比词向量（分布式）与One-Hot编码（符号式）的差异，强调分布式表示的语义捕捉能力。"
+                    ]
+                },
+                {
+                    "title": "2.2 工具一 (统计方法)：TF-IDF与词袋模型",
+                    "id": "nlp-sec-2-2-1",
+                    "relation_to_previous": "tool_in_toolbox",
+                    "primary_goal": "详细拆解词袋模型（BoW）和TF-IDF的计算原理，并分析它们作为稀疏、离散表示方法的优势（简单、可解释）与核心局限（无法捕捉语义、维度灾难）。",
+                    "suggested_modules": [
+                        "code_example",
+                        "comparison"
+                    ],
+                    "suggested_contents": [
+                        "**词袋模型 (BoW)** - 解释如何将一个句子或文档表示为一个忽略语序的词频向量。",
+                        "**TF-IDF计算** - 分步讲解词频 (Term Frequency) 和逆文档频率 (Inverse Document Frequency) 的计算公式和直觉含义。",
+                        "**动手计算** - 提供一个包含3-4个短文档的小型语料库，手动计算其中某个词的TF-IDF值。",
+                        "**优劣分析** - 总结其优点（简单高效）和缺点（稀疏性、维度灾难、无语义信息）。"
+                    ]
+                },
+                {
+                    "title": "2.3 工具二 (预测方法)：静态词向量 (Word2Vec & GloVe)",
+                    "id": "nlp-sec-2-2-2",
+                    "relation_to_previous": "tool_in_toolbox",
+                    "primary_goal": "深入讲解Word2Vec（包括Skip-gram和CBOW变体）和GloVe的核心工作原理，阐明它们如何通过预测上下文来学习捕捉词汇语义关系的密集向量。",
+                    "suggested_modules": [
+                        "code_example",
+                        "comparison",
+                        "case_study"
+                    ],
+                    "suggested_contents": [
+                        "**Word2Vec核心原理** - 使用图示解释Skip-gram（中心词预测上下文）和CBOW（上下文预测中心词）的神经网络结构。",
+                        "**GloVe核心原理** - 解释GloVe如何结合全局词-词共现矩阵的统计信息与预测方法的优点。",
+                        "**代码实践** - 展示如何加载预训练的Word2Vec或GloVe模型，并用它来寻找近义词或完成词汇类比任务。",
+                        "**可视化** - 使用t-SNE等降维方法可视化词向量空间，直观感受语义相近的词在空间中聚集的现象。"
+                    ]
+                },
+                {
+                    "title": "2.4 局限性：静态词向量无法解决的问题",
+                    "id": "nlp-sec-2-2-3",
+                    "relation_to_previous": "builds_on",
+                    "primary_goal": "通过“一词多义”等具体案例，揭示所有静态词向量方法的共同缺陷——无法根据上下文动态调整词义，为后续引入上下文相关的表示方法埋下伏笔。",
+                    "suggested_modules": [
+                        "common_mistake_warning"
+                    ],
+                    "suggested_contents": [
+                        "**“一词多义”问题** - 用'bank'（银行/河岸）或'stick'（棍子/坚持）的例子，说明静态词向量无法区分同一个词在不同语境下的含义。",
+                        "**上下文无关** - 强调静态词向量为每个词生成一个固定的向量，无论其上下文如何变化。",
+                        "**引出下一章** - 明确指出解决此问题的关键在于模型需要具备理解和记忆上下文的能力。"
+                    ]
+                }
+            ]
+        }
+    ]
+}
 ```
 
 ### reconstruct.tools

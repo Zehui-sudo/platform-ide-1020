@@ -2,132 +2,91 @@
 # -*- coding: utf-8 -*-
 
 """
-Lightweight prompt loader for Markdown catalogs.
-
-Convention:
-- File: prompts/prompt_catalog.md
-- Each prompt is defined under an H3 header line: `### <key>`
-- Immediately followed by a fenced code block (``` ... ```). The code block
-  content is the prompt text. The info string after ``` is ignored.
-
-Example:
-  ### reconstruct.classify_subject
-  ```text
-  ... prompt content ...
-  ```
-
-Usage:
-  from prompts.prompt_loader import get_prompt
-  text = get_prompt('reconstruct.classify_subject', default_text)
-
-Notes:
-- The loader is resilient: if the catalog is missing or the key is not found,
-  it will return the provided default value.
-- The catalog is cached in-process after the first load.
+Robust prompt loader for parsing prompt_catalog.md.
 """
 
-from __future__ import annotations
-
-import sys
+import re
 from pathlib import Path
 from typing import Dict, Optional
 
+# Cache to avoid reading the file multiple times
+_cache: Optional[Dict[str, str]] = None
 
-def _find_repo_root() -> Path:
-    p = Path(__file__).resolve()
-    for parent in [p] + list(p.parents):
-        if (parent / "config.json").exists():
-            return parent
-    return Path(__file__).resolve().parents[-1]
-
-
-BASE_DIR = _find_repo_root()
-CATALOG_PATH = BASE_DIR / "prompts" / "prompt_catalog.md"
-
-_CACHE: Optional[Dict[str, str]] = None
-
-
-def _ensure_base_on_path() -> None:
-    try:
-        if str(BASE_DIR) not in sys.path:
-            sys.path.insert(0, str(BASE_DIR))
-    except Exception:
-        pass
-
-
-def _parse_catalog(text: str) -> Dict[str, str]:
-    lines = text.splitlines()
-    out: Dict[str, str] = {}
-    current_key: Optional[str] = None
-    i = 0
-    n = len(lines)
-    while i < n:
-        line = lines[i]
-        # Match H3 headers: ### key
-        if line.startswith("### "):
-            key = line[4:].strip()
-            current_key = key if key else None
-            i += 1
-            # Seek the next fenced block
-            while i < n and not lines[i].lstrip().startswith("```"):
-                # Skip non-fence lines between header and fence
-                i += 1
-            if i >= n or not lines[i].lstrip().startswith("```"):
-                # No fence found for this header; reset and continue
-                current_key = None
-                continue
-            # Consume opening fence
-            fence_line = lines[i]
-            fence_indent = len(fence_line) - len(fence_line.lstrip())
-            i += 1
-            block: list[str] = []
-            # Collect until closing fence at the same indent level
-            while i < n:
-                l = lines[i]
-                if l.startswith(" " * fence_indent + "```"):
-                    i += 1
-                    break
-                block.append(l)
-                i += 1
-            if current_key:
-                out[current_key] = "\n".join(block).rstrip("\n")
-                current_key = None
-            continue
-        i += 1
-    return out
-
-
-def _load_catalog(path: Optional[Path] = None) -> Dict[str, str]:
-    global _CACHE
-    if _CACHE is not None:
-        return _CACHE
-    p = Path(path) if path else CATALOG_PATH
-    try:
-        text = p.read_text(encoding="utf-8")
-    except Exception:
-        _CACHE = {}
-        return _CACHE
-    _CACHE = _parse_catalog(text)
-    return _CACHE
-
-
-def get_prompt(key: str, default: Optional[str] = None, *, path: Optional[str] = None) -> str:
-    """Return prompt text by key from the Markdown catalog.
-
-    If not found or the file is missing, returns `default` (or empty string).
+def _load_prompts_from_catalog() -> Dict[str, str]:
     """
-    _ensure_base_on_path()
+    Parses the prompt_catalog.md file and returns a dictionary of prompts.
+    This parser is designed to be robust against nested code blocks within a prompt.
+    """
+    global _cache
+    if _cache is not None:
+        return _cache
+
+    prompts = {}
     try:
-        catalog = _load_catalog(Path(path) if path else None)
-    except Exception:
-        catalog = {}
-    if not isinstance(catalog, dict):
-        return default or ""
-    val = catalog.get(key)
-    if isinstance(val, str) and val.strip():
-        return val
-    return default or ""
+        # Assume this file is in prompts/, so catalog is in the same directory
+        catalog_path = Path(__file__).parent / "prompt_catalog.md"
+        content = catalog_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        _cache = {}
+        return _cache
 
+    # Split the file by '### ' headers, which denote the start of a new prompt key
+    # The lookahead assertion `(?=
+### )` keeps the delimiter.
+    sections = re.split(r'\n(?=### )', content)
+    
+    for section in sections:
+        section = section.strip()
+        if not section.startswith('### '):
+            continue
 
-__all__ = ["get_prompt"]
+        lines = section.splitlines()
+        key = lines[0].replace('### ', '').strip()
+        
+        # Find the start of the main code block
+        code_block_start_index = -1
+        for i, line in enumerate(lines):
+            if line.strip().startswith('```'):
+                code_block_start_index = i
+                break
+        
+        if code_block_start_index != -1:
+            # Find the end of the main code block by searching from the bottom up
+            code_block_end_index = -1
+            for i in range(len(lines) - 1, code_block_start_index, -1):
+                if lines[i].strip() == '```':
+                    code_block_end_index = i
+                    break
+            
+            if code_block_end_index != -1:
+                # Extract the content between the fences
+                prompt_lines = lines[code_block_start_index + 1 : code_block_end_index]
+                prompts[key] = "\n".join(prompt_lines)
 
+    _cache = prompts
+    return _cache
+
+def get_prompt(key: str, default: Optional[str] = None) -> str:
+    """
+    Retrieves a prompt by its key from the loaded catalog.
+    
+    Args:
+        key: The dot-separated key for the prompt (e.g., "reconstruct.classify_subject").
+        default: An optional fallback value. If not provided, a KeyError is raised for missing keys.
+
+    Returns:
+        The prompt template string.
+
+    Raises:
+        KeyError: If the key is not found and no default is provided.
+    """
+    prompts = _load_prompts_from_catalog()
+    result = prompts.get(key)
+    
+    if result is not None:
+        return result
+    
+    if default is not None:
+        return default
+        
+    raise KeyError(f"Prompt with key '{key}' not found in catalog and no default was provided.")

@@ -154,9 +154,50 @@ class LLM:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
     ) -> Iterator[str]:
-        """Best-effort streaming. Yields a single chunk if SDK streaming not available."""
-        # For now, fall back to a single chunk to keep implementation simple.
-        yield self.complete(prompt, system=system, temperature=temperature, max_tokens=max_tokens)
+        """Yields response chunks as they are received from the provider."""
+        self.last_info = {}
+        temp = float(self._cfg.temperature if temperature is None else temperature)
+        max_tks = int(self._cfg.max_tokens if not max_tokens else max_tokens)
+
+        if self._provider in ("openai_compat", "deepseek", "openai"):
+            self._ensure_openai()
+            messages: list[dict[str, str]] = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            messages.append({"role": "user", "content": prompt})
+            
+            response_stream = self._client.chat.completions.create(  # type: ignore[attr-defined]
+                model=self._cfg.model,
+                messages=messages,
+                temperature=temp,
+                max_tokens=max_tks,
+                stream=True,
+            )
+            for chunk in response_stream:
+                content = (chunk.choices[0].delta.content or "") if chunk.choices else ""
+                if content:
+                    yield content
+
+        elif self._provider in ("gemini", "google"):
+            self._ensure_gemini()
+            import google.generativeai as genai
+
+            config = genai.types.GenerationConfig(
+                candidate_count=1,
+                max_output_tokens=max_tks,
+                temperature=temp,
+            )
+            response_stream = self._gemini_model.generate_content(  # type: ignore[attr-defined]
+                prompt,
+                stream=True,
+                generation_config=config,
+            )
+            for chunk in response_stream:
+                if chunk.text:
+                    yield chunk.text
+        
+        else:
+            raise RuntimeError(f"Unknown provider for streaming: {self._provider}")
 
     # ---- async compatibility ----
     async def ainvoke(self, prompt: str) -> str:

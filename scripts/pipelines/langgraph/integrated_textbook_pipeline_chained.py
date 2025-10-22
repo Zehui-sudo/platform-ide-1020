@@ -20,10 +20,6 @@
     --top-n 3 \
     --print-prompt \
     --stream \
-    --gemini-llm-key gemini-2.5-pro-zhongzhuan \
-    --kimi-llm-key kimi-k2 \
-    --reconstruct-llm-key gemini-2.5-pro-zhongzhuan \
-    --classifier-llm-key deepseek-chat \
     --learning-style principles \
     --expected-content "主流流媒体平台视频分发的加密方式，如何防止恶意下载" \
     --log
@@ -40,6 +36,12 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# Ensure the project root (containing the `scripts` package) is importable when this file
+# is executed as a script via a relative path such as `python3 scripts/...`.
+_REPO_ROOT_CANDIDATE = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT_CANDIDATE) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT_CANDIDATE))
 
 from scripts.common.llm import build_llm_registry, pick_llm
 from scripts.common.utils import repo_root as _repo_root, load_config as _load_config, slugify as _slugify
@@ -132,10 +134,10 @@ def run_toc_pipeline(
         "print_prompt": bool(print_prompt),
     }
     logging.getLogger(__name__).info(
-        "[1/2] 运行 TOC 流水线 … subject=%s top_n=%d max_parallel=%d",
+        "[1/2] 运行 TOC 流水线 … subject=%s, recommender=%s, toc_retriever=%s",
         subject,
-        top_n,
-        max_parallel,
+        gemini_llm_key,
+        kimi_llm_key,
     )
     final_state = app.invoke(init_state)
     return {
@@ -189,17 +191,8 @@ def run_reconstruct(
     # 选择生成与分类 LLM（统一使用 shared LLM 组件）
     registry = build_llm_registry(cfg)
     caller = pick_llm(cfg, registry, reconstruct_llm_key)
-    # 分类模型优先 node_llm.classify_subject -> CLI -> 合理回退
-    node_llm = cfg.get("node_llm") or {}
-    preferred_cls_key = None
-    if isinstance(node_llm, dict):
-        k = node_llm.get("classify_subject")
-        if isinstance(k, str):
-            preferred_cls_key = k
-    # 若 CLI 指定，则覆盖 node 配置
-    if classifier_llm_key:
-        preferred_cls_key = classifier_llm_key
-    classifier_llm = pick_llm(cfg, registry, preferred_cls_key)
+    # 分类模型由 main 函数在 CLI 和 config.json 之间决策后传入
+    classifier_llm = pick_llm(cfg, registry, classifier_llm_key)
     class _CompatCaller:
         def __init__(self, llm):
             self._llm = llm
@@ -207,6 +200,7 @@ def run_reconstruct(
             return self._llm.complete(prompt, max_tokens=max_tokens)
 
     # 决定 subject_type
+    logging.getLogger(__name__).info("使用模型 '%s' 进行主题分类...", classifier_llm_key)
     if force_subject_type:
         subject_type = force_subject_type.strip().lower()
     else:
@@ -234,6 +228,7 @@ def run_reconstruct(
         print("=========== DEBUG: Prompt End ===========", file=sys.stderr)
 
     # 调用 LLM
+    logging.getLogger(__name__).info("使用模型 '%s' 进行大纲重构...", reconstruct_llm_key)
     if stream:
         print("[信息] 正在以流式方式接收模型输出…", file=sys.stderr)
         buf: List[str] = []
@@ -324,6 +319,19 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     cfg = _load_config(args.config)
 
+    # 确定各阶段 LLM Key（CLI 优先，否则回退到 config.json）
+    node_llm_cfg = cfg.get("node_llm", {})
+    gemini_key = args.gemini_llm_key or node_llm_cfg.get("recommend_textbooks")
+    kimi_key = args.kimi_llm_key or node_llm_cfg.get("retrieve_toc")
+    reconstruct_key = args.reconstruct_llm_key or node_llm_cfg.get("reconstruct_outline")
+    classifier_key = args.classifier_llm_key or node_llm_cfg.get("classify_subject")
+
+    logger.info("LLM Key Mapping:")
+    logger.info("  - Textbook Recommendation: %s", gemini_key)
+    logger.info("  - TOC Retrieval: %s", kimi_key)
+    logger.info("  - Outline Reconstruction: %s", reconstruct_key)
+    logger.info("  - Subject Classification: %s", classifier_key)
+
     # 规范化/校验学习风格
     def _normalize_style(s: Optional[str]) -> str:
         val = (s or "").strip().lower()
@@ -345,8 +353,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         top_n=max(1, int(args.top_n)),
         max_parallel=max(1, int(args.max_parallel)),
         cfg=cfg,
-        gemini_llm_key=args.gemini_llm_key,
-        kimi_llm_key=args.kimi_llm_key,
+        gemini_llm_key=gemini_key,
+        kimi_llm_key=kimi_key,
         expected_content=(args.expected_content or "").strip() if hasattr(args, 'expected_content') else None,
         print_prompt=bool(args.print_prompt),
     )
@@ -357,8 +365,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         subject_slug=stage1.get("subject_slug"),
         tocs=stage1.get("tocs", []) or [],
         cfg=cfg,
-        reconstruct_llm_key=args.reconstruct_llm_key,
-        classifier_llm_key=args.classifier_llm_key,
+        reconstruct_llm_key=reconstruct_key,
+        classifier_llm_key=classifier_key,
         force_subject_type=args.subject_type,
         learning_style=norm_style,
         expected_content=args.expected_content,
