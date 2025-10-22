@@ -39,6 +39,8 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TypedDict
+from scripts.common.llm import build_llm_registry, pick_llm, select_llm_for_node
+from scripts.common.utils import repo_root as _repo_root, load_config as _load_config, slugify as _slugify, parse_json as _parse_json, ensure_dir
 
 # --- 依赖导入（若缺失给出友好提示） ---
 try:
@@ -46,14 +48,6 @@ try:
 except Exception:
     sys.stderr.write(
         "[错误] 未找到 langgraph。请先安装:\n  python3 -m pip install -U langgraph\n"
-    )
-    raise SystemExit(1)
-
-try:
-    import google.generativeai as genai
-except Exception:
-    sys.stderr.write(
-        "[错误] 未找到 google-generativeai。请先安装:\n  python3 -m pip install -U google-generativeai\n"
     )
     raise SystemExit(1)
 
@@ -67,52 +61,12 @@ except Exception:
 
 
 # --- 配置读取工具 ---
-def _find_repo_root() -> Path:
-    p = Path(__file__).resolve()
-    for parent in [p] + list(p.parents):
-        if (parent / "config.json").exists():
-            return parent
-    return Path(__file__).resolve().parents[-1]
-
-BASE_DIR = _find_repo_root()
+BASE_DIR = _repo_root()
 CONFIG_PATH = BASE_DIR / "config.json"
-
-
-def _load_config() -> Dict[str, Any]:
-    if not CONFIG_PATH.exists():
-        raise SystemExit(f"[错误] 未找到配置文件: {CONFIG_PATH}")
-    try:
-        return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    except Exception as e:
-        raise SystemExit(f"[错误] 解析配置文件失败: {e}")
-
-
-def _slugify(text: str, fallback: str = "subject") -> str:
-    t = (
-        text.replace("（", "(").replace("）", ")").replace("—", "-")
-        .strip()
-    )
-    t = re.sub(r"[^0-9A-Za-z\-_.\s]", "", t)
-    t = re.sub(r"\s+", "-", t)
-    t = t.strip("-_.").lower()
-    return t or fallback
-
-
-@dataclass
-class GeminiConfig:
-    model: str
-    api_key: str
 
 
 @dataclass
 class KimiConfig:
-    model: str
-    api_key: str
-    base_url: str
-
-
-@dataclass
-class DeepseekConfig:
     model: str
     api_key: str
     base_url: str
@@ -124,20 +78,6 @@ def _pick_llm_key_by_provider(cfg: Dict[str, Any], provider: str) -> Optional[st
         if str(v.get("provider", "")).lower().startswith(provider):
             return k
     return None
-
-
-def load_gemini_config(cfg: Dict[str, Any], key_hint: Optional[str]) -> GeminiConfig:
-    llms = cfg.get("llms") or {}
-    key = key_hint or ("gemini-2.5-pro" if "gemini-2.5-pro" in llms else _pick_llm_key_by_provider(cfg, "gemini"))
-    if not key or key not in llms:
-        raise SystemExit("[错误] config.json 缺少 Gemini 配置项 (llms). 可指定 --gemini-llm-key")
-    entry = llms[key]
-    api_key = entry.get("api_key") or os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
-        raise SystemExit("[错误] 未配置 Gemini API Key。请在 config.json 或设置 GOOGLE_API_KEY。")
-    model = entry.get("model") or key
-    return GeminiConfig(model=model, api_key=api_key)
-
 
 def load_kimi_config(cfg: Dict[str, Any], key_hint: Optional[str]) -> KimiConfig:
     llms = cfg.get("llms") or {}
@@ -155,38 +95,6 @@ def load_kimi_config(cfg: Dict[str, Any], key_hint: Optional[str]) -> KimiConfig
     return KimiConfig(model=model, api_key=api_key, base_url=base_url)
 
 
-def load_deepseek_config(cfg: Dict[str, Any], key_hint: Optional[str]) -> DeepseekConfig:
-    """从 config.json 读取 DeepSeek 配置；默认键 deepseek-chat。
-
-    - 支持从 llms 条目读取 api_key/base_url/model。
-    - 回退到环境变量：DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL。
-    - 若 base_url 未带 /v1，自动补全。
-    """
-    llms = cfg.get("llms") or {}
-    key = key_hint or ("deepseek-chat" if "deepseek-chat" in llms else _pick_llm_key_by_provider(cfg, "deepseek"))
-    if not key or key not in llms:
-        raise SystemExit("[错误] config.json 缺少 DeepSeek 配置项 (llms)。可指定 --deepseek-llm-key 或配置 llms.deepseek-chat")
-    entry = llms[key]
-    api_key = (
-        entry.get("api_key")
-        or entry.get("deepseek_api_key")
-        or os.environ.get("DEEPSEEK_API_KEY")
-    )
-    if not api_key:
-        raise SystemExit("[错误] 未配置 DeepSeek API Key。请在 config.json 或设置 DEEPSEEK_API_KEY。")
-    base_url = (
-        entry.get("base_url")
-        or entry.get("deepseek_base_url")
-        or os.environ.get("DEEPSEEK_BASE_URL")
-        or "https://api.deepseek.com"
-    )
-    # 规范化 base_url，确保包含 /v1 前缀
-    base_url = re.sub(r"^hhttps://", "https://", base_url)
-    if not re.search(r"/v1/?$", base_url):
-        base_url = base_url.rstrip("/") + "/v1"
-    model = entry.get("model") or "deepseek-chat"
-    return DeepseekConfig(model=model, api_key=api_key, base_url=base_url)
-
 
 def _prompt_from_catalog(key: str, default_text: str) -> str:
     try:
@@ -197,18 +105,7 @@ def _prompt_from_catalog(key: str, default_text: str) -> str:
 
 
 def _parse_json_str(text: str) -> Any:
-    """最小 JSON 解析：支持一次代码块围栏回退（```json ... ```）。"""
-    text = (text or "").strip()
-    try:
-        return json.loads(text)
-    except Exception:
-        pass
-    # 尝试解析代码围栏：```json ... ``` 或通用 ``` ... ```
-    m = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, flags=re.IGNORECASE)
-    if m:
-        frag = (m.group(1) or "").strip()
-        return json.loads(frag)
-    raise ValueError("响应内容不是有效的 JSON。")
+    return _parse_json(text)
 
 
 # --- 状态定义 ---
@@ -217,7 +114,7 @@ class PipelineState(TypedDict, total=False):
     subject_slug: str
     top_n: int
     max_parallel: int
-    gemini: GeminiConfig
+    recommender_llm_key: Optional[str]
     kimi: KimiConfig
     expected_content: str
     print_prompt: bool
@@ -244,7 +141,7 @@ def generate_subject_slug(state: PipelineState) -> PipelineState:
         s = re.sub(r"-+", "-", s).strip("-")
         return s
 
-    # 优先调用 DeepSeek（openai 兼容），失败则尝试 Gemini flash，再失败回退本地
+    # 使用共享 LLM 组件，根据 node_llm.generate_subject_slug 路由；失败回退默认
     tmpl = _prompt_from_catalog(
         "toc.slug",
         "你的任务是为一个给定的主题生成一个简洁、全小写、URL友好、用连字符分隔（kebab-case）的英文 slug。\n\n"
@@ -262,36 +159,22 @@ def generate_subject_slug(state: PipelineState) -> PipelineState:
     prompt = tmpl.replace("[subject]", subject)
 
     final_slug: str
-    # 1) DeepSeek 尝试
     try:
         cfg = _load_config()
-        ds_cfg = load_deepseek_config(cfg, None)
-        client = OpenAI(base_url=ds_cfg.base_url, api_key=ds_cfg.api_key)
-        resp = client.chat.completions.create(
-            model=ds_cfg.model,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that outputs only short slugs in lowercase kebab-case."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.2,
-            max_tokens=64,
-        )
-        raw = (resp.choices[0].message.content or "") if (resp and resp.choices) else ""
+        registry = build_llm_registry(cfg)
+        llm = select_llm_for_node(cfg, registry, "generate_subject_slug")
+        raw = llm.complete(prompt, max_tokens=64, temperature=0.2, system="You are a helpful assistant that outputs only short slugs in lowercase kebab-case.")
         slug = _clean_slug(raw)
         final_slug = slug or _slugify(subject, "subject")
     except Exception as e:
-        logger.warning("DeepSeek 生成 slug 失败，尝试 Gemini：%s", e)
-        # 2) Gemini 尝试（使用轻量 flash）
+        logger.warning("Slug 生成失败，回退默认：%s", e)
         try:
-            gem_cfg: GeminiConfig = state["gemini"]
-            genai.configure(api_key=gem_cfg.api_key)
-            model = genai.GenerativeModel("gemini-2.5-flash")
-            resp = model.generate_content(prompt)
-            raw = getattr(resp, "text", "")
+            cfg = _load_config()
+            registry = build_llm_registry(cfg)
+            raw = pick_llm(cfg, registry, None).complete(prompt, max_tokens=64)
             slug = _clean_slug(raw)
             final_slug = slug or _slugify(subject, "subject")
-        except Exception as e2:
-            logger.warning("Gemini 备选生成 slug 失败，回退本地规则：%s", e2)
+        except Exception:
             final_slug = _slugify(subject, "subject")
 
     logger.info("生成 Slug: %s -> %s", subject, final_slug)
@@ -302,15 +185,14 @@ def recommend_textbooks(state: PipelineState) -> PipelineState:
     logger = logging.getLogger(__name__)
     subject = state["subject"]
     expected = (state.get("expected_content") or "").strip()
-    gem_cfg: GeminiConfig = state["gemini"]
-
-    genai.configure(api_key=gem_cfg.api_key)
-    model = genai.GenerativeModel(gem_cfg.model)
-
+    cfg = _load_config()
+    registry = build_llm_registry(cfg)
+    rec_key = state.get("recommender_llm_key") or None
+    llm = pick_llm(cfg, registry, rec_key)
     if expected:
-        logger.info("[1/2] 调用 Gemini 推荐教材 … 模型=%s 主题=%s | 学习者期望已提供", gem_cfg.model, subject)
+        logger.info("[1/2] 调用 LLM 推荐教材 … 主题=%s | 学习者期望已提供", subject)
     else:
-        logger.info("[1/2] 调用 Gemini 推荐教材 … 模型=%s 主题=%s", gem_cfg.model, subject)
+        logger.info("[1/2] 调用 LLM 推荐教材 … 主题=%s", subject)
     prompt_tmpl = _prompt_from_catalog(
         "toc.recommend",
         "你是资深课程设计专家。请基于全球范围内的经典/权威/广泛采用的教材，推荐与主题“[subject]”最相关的教材。\n\n"
@@ -339,11 +221,10 @@ def recommend_textbooks(state: PipelineState) -> PipelineState:
         prompt = prompt + "\n" + ("学习者期望：\n- " + expected + "\n")
 
     if state.get("print_prompt"):
-        print("========== DEBUG: Gemini Prompt Begin ==========", file=sys.stderr)
+        print("========== DEBUG: Recommend Prompt Begin ==========", file=sys.stderr)
         print(prompt, file=sys.stderr)
-        print("=========== DEBUG: Gemini Prompt End ===========", file=sys.stderr)
-    resp = model.generate_content(prompt)
-    text = getattr(resp, "text", "")
+        print("=========== DEBUG: Recommend Prompt End ===========", file=sys.stderr)
+    text = llm.complete(prompt, max_tokens=8192)
     data = _parse_json_str(text)
     if not isinstance(data, dict) or "textbooks" not in data:
         raise ValueError("Gemini 返回的 JSON 不含 textbooks 字段。")
@@ -354,7 +235,7 @@ def recommend_textbooks(state: PipelineState) -> PipelineState:
 
     top_n = int(state.get("top_n", 3) or 3)
     recs = recs[:top_n]
-    logger.info("Gemini 推荐教材共 %d 本，取前 %d 本。", len(data.get("textbooks", [])), len(recs))
+    logger.info("推荐教材共 %d 本，取前 %d 本。", len(data.get("textbooks", [])), len(recs))
     new_state = dict(state)
     new_state["recommendations"] = recs
     return new_state  # type: ignore
@@ -559,12 +440,11 @@ def main():
     logger = logging.getLogger(__name__)
 
     cfg = _load_config()
-    gem_cfg = load_gemini_config(cfg, args.gemini_llm_key)
     kimi_cfg = load_kimi_config(cfg, args.kimi_llm_key)
 
     logger.info(
         "启动教材目录生成流水线 | 主题=%s | top_n=%d | 并行度=%d | Gemini=%s | Kimi=%s",
-        args.subject, args.top_n, args.max_parallel, gem_cfg.model, kimi_cfg.model,
+        args.subject, args.top_n, args.max_parallel, (args.gemini_llm_key or (cfg.get("node_llm", {}) or {}).get("default")), kimi_cfg.model,
     )
 
     app = build_graph()
@@ -573,7 +453,7 @@ def main():
         "subject": args.subject,
         "top_n": max(1, int(args.top_n)),
         "max_parallel": max(1, int(args.max_parallel)),
-        "gemini": gem_cfg,
+        "recommender_llm_key": args.gemini_llm_key,
         "kimi": kimi_cfg,
         "expected_content": (args.expected_content or "").strip(),
         "print_prompt": bool(args.print_prompt),
@@ -597,7 +477,7 @@ def main():
         out_path.parent.mkdir(parents=True, exist_ok=True)
     else:
         out_dir = BASE_DIR / "output" / "textbook_tocs"
-        out_dir.mkdir(parents=True, exist_ok=True)
+        ensure_dir(out_dir)
         slug = out.get("subject_slug") or _slugify(args.subject, "subject")
         out_path = out_dir / f"{slug}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
 

@@ -33,347 +33,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from scripts.common.llm import build_llm_registry, pick_llm
+from scripts.common.utils import repo_root as _repo_root, load_config as _load_config, slugify as _slugify, extract_json_object as _extract_json
 
 # -----------------------------
 # 常量与工具
 # -----------------------------
 
-def _find_repo_root() -> Path:
-    p = Path(__file__).resolve()
-    for parent in [p] + list(p.parents):
-        if (parent / "config.json").exists():
-            return parent
-    return Path(__file__).resolve().parents[-1]
-
-BASE_DIR = _find_repo_root()
+BASE_DIR = _repo_root()
 CONFIG_PATH = BASE_DIR / "config.json"
 
-
-def _load_config(path: Optional[str] = None) -> Dict[str, Any]:
-    cfg_path = Path(path) if path else CONFIG_PATH
-    if not cfg_path.exists():
-        raise SystemExit(f"[错误] 未找到配置文件: {cfg_path}")
-    try:
-        return json.loads(cfg_path.read_text(encoding="utf-8"))
-    except Exception as e:
-        raise SystemExit(f"[错误] 解析配置文件失败: {e}")
-
-
-def _slugify(text: str, fallback: str = "outline") -> str:
-    t = (
-        (text or "").replace("（", "(").replace("）", ")").replace("—", "-")
-        .strip()
-    )
-    t = re.sub(r"[^0-9A-Za-z\-_.\s]", "", t)
-    t = re.sub(r"\s+", "-", t)
-    t = t.strip("-_.").lower()
-    return t or fallback
-
-
-def _extract_json(s: str) -> Dict[str, Any]:
-    """从 LLM 原始输出中提取 JSON 对象，并给出具体失败原因。
-
-    解析顺序：
-      1) 直接整体解析。
-      2) 解析 ```json 围栏内的对象文本。
-      3) 截取最外层花括号的子串进行解析。
-
-    若三步均失败，返回包含各步骤错误细节的明确错误信息（含位置与截断的上下文片段）。
-    """
-    s = (s or "").strip()
-    if not s:
-        raise ValueError("空响应：模型未返回任何文本。")
-
-    reasons: List[str] = []
-
-    def _mk_snippet(text: str, pos: int | None = None, radius: int = 60) -> str:
-        if not text:
-            return ""
-        if pos is None or pos < 0 or pos >= len(text):
-            head = text[:200]
-            tail = text[-200:] if len(text) > 400 else ""
-            mid = " … " if tail else ""
-            return f"head='{head}'{mid}{(' tail=' + tail) if tail else ''}"
-        start = max(0, pos - radius)
-        end = min(len(text), pos + radius)
-        frag = text[start:end]
-        return f"near_pos[{pos}]: '{frag}'"
-
-    # 1) 直接解析
-    try:
-        data = json.loads(s)
-        if isinstance(data, dict):
-            return data
-        reasons.append(f"直接解析得到类型: {type(data).__name__}（顶层需为对象）")
-    except json.JSONDecodeError as e:  # type: ignore[attr-defined]
-        reasons.append(
-            f"直接解析失败: {e.msg} (line {e.lineno}, col {e.colno}) | {_mk_snippet(s, e.pos)}"
-        )
-    except Exception as e:
-        reasons.append(f"直接解析异常: {e!r}")
-
-    # 检测是否包含围栏
-    has_fence = "```" in s
-
-    # 2) ```json 包裹
-    m = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", s, re.IGNORECASE)
-    if not m:
-        if has_fence:
-            reasons.append("存在代码围栏，但未匹配到 {…} 对象内容")
-        else:
-            reasons.append("未发现 ```json 围栏")
-    else:
-        frag = (m.group(1) or "").strip()
-        try:
-            data = json.loads(frag)
-            if isinstance(data, dict):
-                return data
-            reasons.append(f"```json 围栏内解析到类型: {type(data).__name__}（顶层需为对象）")
-        except json.JSONDecodeError as e:  # type: ignore[attr-defined]
-            reasons.append(
-                f"```json 围栏解析失败: {e.msg} (line {e.lineno}, col {e.colno}) | {_mk_snippet(frag, e.pos)}"
-            )
-        except Exception as e:
-            reasons.append(f"```json 围栏解析异常: {e!r}")
-
-    # 3) 最外层 { ... } 截取
-    start = s.find("{")
-    end = s.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        reasons.append("未找到成对的大括号 { … } 以供截取")
-    else:
-        frag2 = s[start : end + 1].strip()
-        try:
-            data = json.loads(frag2)
-            if isinstance(data, dict):
-                return data
-            reasons.append(f"大括号截取解析到类型: {type(data).__name__}（顶层需为对象）")
-        except json.JSONDecodeError as e:  # type: ignore[attr-defined]
-            reasons.append(
-                f"大括号截取解析失败: {e.msg} (line {e.lineno}, col {e.colno}) | {_mk_snippet(frag2, e.pos)}"
-            )
-        except Exception as e:
-            reasons.append(f"大括号截取解析异常: {e!r}")
-
-    # 汇总错误信息
-    snippet = _mk_snippet(s)
-    reason_text = "; ".join(reasons) if reasons else "未知原因"
-    raise ValueError(f"无法从模型输出中提取 JSON 对象：{reason_text} | 输出片段: {snippet}")
-
-
-# -----------------------------
-# LLM 选择与调用
-# -----------------------------
-
-@dataclass
-class LLMConfig:
-    key: str
-    provider: str
-    model: str
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
-    temperature: float = 0.4
-
-
-def choose_llm(cfg: Dict[str, Any], llm_key: Optional[str]) -> LLMConfig:
-    llms = cfg.get("llms") or {}
-    if not llms:
-        raise SystemExit("配置中缺少 llms。")
-    # 默认优先 gemini-2.5-pro
-    default_key = "gemini-2.5-pro" if "gemini-2.5-pro" in llms else None
-    key = llm_key or default_key or next(iter(llms.keys()))
-    entry = llms.get(key)
-    if not entry:
-        raise SystemExit(f"在 config.json 中找不到 llm: {key}")
-    provider = entry.get("provider", "gemini")
-    model = entry.get("model") or key
-    api_key = entry.get("api_key") or os.environ.get("OPENAI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    base_url = entry.get("base_url")
-    temperature = float(entry.get("temperature", 0.4))
-    return LLMConfig(key=key, provider=provider, model=model, api_key=api_key, base_url=base_url, temperature=temperature)
-
-
-class LLMCaller:
-    """最小封装：支持 Gemini 与 OpenAI 兼容端点。"""
-
-    def __init__(self, conf: LLMConfig) -> None:
-        self.conf = conf
-        self._client = None
-        self.last_info: Dict[str, Any] = {}
-        self._init()
-
-    def _init(self) -> None:
-        provider = (self.conf.provider or "").lower()
-        if provider in ("openai", "openai_compat", "deepseek"):
-            try:
-                from openai import OpenAI
-            except Exception:
-                raise SystemExit("缺少 openai 库，请先安装：pip install -U openai")
-            if not self.conf.api_key:
-                raise SystemExit("未配置 OpenAI 兼容 API Key。")
-            self._client = OpenAI(api_key=self.conf.api_key, base_url=self.conf.base_url)
-        elif provider == "gemini":
-            try:
-                import google.generativeai as genai
-            except Exception:
-                raise SystemExit("缺少 google-generativeai 库，请先安装：pip install -U google-generativeai")
-            if not self.conf.api_key:
-                raise SystemExit("未配置 Gemini API Key。")
-            genai.configure(api_key=self.conf.api_key)
-            self._client = genai
-        else:
-            raise SystemExit(f"暂不支持的 provider: {self.conf.provider}")
-
-    def complete(self, prompt: str, max_tokens: int = 65536) -> str:
-        provider = (self.conf.provider or "").lower()
-        self.last_info = {}
-        if provider in ("openai", "openai_compat", "deepseek"):
-            try:
-                resp = self._client.chat.completions.create(
-                    model=self.conf.model,
-                    messages=[
-                        {"role": "system", "content": "你是一个严谨的课程设计助手。除非被明确要求，否则只输出 JSON。"},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=self.conf.temperature,
-                    max_tokens=max_tokens,
-                )
-            except Exception as e:
-                raise RuntimeError(f"OpenAI 兼容端点调用失败: {type(e).__name__}: {e}") from e
-            # 记录完成原因
-            try:
-                ch0 = (getattr(resp, "choices", None) or [None])[0]
-                fr = getattr(ch0, "finish_reason", None)
-                self.last_info = {"finish_reason": str(fr) if fr is not None else None}
-            except Exception:
-                pass
-            return resp.choices[0].message.content or ""
-        elif provider == "gemini":
-            model = self._client.GenerativeModel(
-                self.conf.model,
-                generation_config={
-                    "temperature": self.conf.temperature,
-                    "max_output_tokens": max_tokens,
-                },
-            )
-            try:
-                resp = model.generate_content(prompt)
-            except Exception as e:
-                # 尝试将 Gemini 的底层错误上抛并保留原始信息
-                raise RuntimeError(f"Gemini generate_content 调用失败: {type(e).__name__}: {e}") from e
-            # 记录 finish_reason/prompt_feedback 以便诊断是否被截断/拦截
-            info: Dict[str, Any] = {}
-            try:
-                cands = list(getattr(resp, "candidates", []) or [])
-                fins = []
-                for c in cands:
-                    fr = getattr(c, "finish_reason", None)
-                    fins.append(str(fr))
-                if fins:
-                    info["finish_reasons"] = fins
-            except Exception:
-                pass
-            try:
-                pf = getattr(resp, "prompt_feedback", None)
-                if pf:
-                    info["prompt_feedback"] = str(pf)
-            except Exception:
-                pass
-            self.last_info = info
-            return getattr(resp, "text", "") or ""
-        else:
-            raise RuntimeError("未知 provider")
-
-    def stream_complete(self, prompt: str, max_tokens: int = 8192):
-        """生成器：以流式方式产出模型输出的文本块。"""
-        provider = (self.conf.provider or "").lower()
-        self.last_info = {}
-        if provider in ("openai", "openai_compat", "deepseek"):
-            try:
-                stream = self._client.chat.completions.create(
-                    model=self.conf.model,
-                    messages=[
-                        {"role": "system", "content": "你是一个严谨的课程设计助手。除非被明确要求，否则只输出 JSON。"},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=self.conf.temperature,
-                    max_tokens=max_tokens,
-                    stream=True,
-                )
-            except Exception as e:
-                raise RuntimeError(f"OpenAI 兼容端点流式调用失败: {type(e).__name__}: {e}") from e
-            last_finish = None
-            for chunk in stream:
-                try:
-                    choices = getattr(chunk, "choices", None) or []
-                    for ch in choices:
-                        # 记录最后一个 finish_reason
-                        fr = getattr(ch, "finish_reason", None)
-                        if fr:
-                            last_finish = str(fr)
-                        delta = getattr(ch, "delta", None)
-                        content = getattr(delta, "content", None) if delta is not None else None
-                        if content:
-                            yield content
-                except Exception:
-                    # 某些兼容端点返回结构不同，尝试容错
-                    text = getattr(chunk, "text", None)
-                    if text:
-                        yield text
-            self.last_info = {"finish_reason": last_finish}
-        elif provider == "gemini":
-            model = self._client.GenerativeModel(
-                self.conf.model,
-                generation_config={
-                    "temperature": self.conf.temperature,
-                    "max_output_tokens": max_tokens,
-                },
-            )
-            try:
-                resp = model.generate_content(prompt, stream=True)
-            except Exception as e:
-                raise RuntimeError(f"Gemini 流式调用失败: {type(e).__name__}: {e}") from e
-            try:
-                for ch in resp:
-                    text = getattr(ch, "text", None)
-                    if text:
-                        yield text
-                # 确保拉取完整响应（对 Gemini 流重要）
-                try:
-                    resp.resolve()
-                except Exception:
-                    pass
-            except Exception:
-                # 兼容性回退：非流式
-                try:
-                    full = model.generate_content(prompt)
-                except Exception as e:
-                    raise RuntimeError(f"Gemini 非流式回退也失败: {type(e).__name__}: {e}") from e
-                t = getattr(full, "text", "") or ""
-                if t:
-                    yield t
-                resp = full
-            # 记录 finish_reason/prompt_feedback 以便诊断
-            info: Dict[str, Any] = {}
-            try:
-                cands = list(getattr(resp, "candidates", []) or [])
-                fins = []
-                for c in cands:
-                    fr = getattr(c, "finish_reason", None)
-                    fins.append(str(fr))
-                if fins:
-                    info["finish_reasons"] = fins
-            except Exception:
-                pass
-            try:
-                pf = getattr(resp, "prompt_feedback", None)
-                if pf:
-                    info["prompt_feedback"] = str(pf)
-            except Exception:
-                pass
-            self.last_info = info
-        else:
-            raise RuntimeError("未知 provider")
+    
 
 
 # -----------------------------
@@ -1016,12 +686,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     if norm_style not in ("principles", "deep_preview"):
         print("[错误] --learning-style 必须为 principles/deep_preview 或 对应中文：原理学习/深度预习", file=sys.stderr)
         return 2
-    llm_conf = choose_llm(cfg, args.llm_key)
+    registry = build_llm_registry(cfg)
+    caller = pick_llm(cfg, registry, args.llm_key)
 
-    # 分类模型（优先 gemini-2.5-flash）
-    default_classifier_key = "gemini-2.5-flash" if (cfg.get("llms") or {}).get("gemini-2.5-flash") else None
-    classifier_conf = choose_llm(cfg, args.classifier_llm_key or default_classifier_key)
-    classifier = LLMCaller(classifier_conf)
+    # 分类模型（优先 node_llm.classify_subject，再退回 CLI，再退回 default）
+    node_llm = cfg.get("node_llm") or {}
+    prefer_cls_key = None
+    if isinstance(node_llm, dict):
+        val = node_llm.get("classify_subject")
+        if isinstance(val, str):
+            prefer_cls_key = val
+    if args.classifier_llm_key:
+        prefer_cls_key = args.classifier_llm_key
+    classifier = pick_llm(cfg, registry, prefer_cls_key)
 
     # 决定 subject_type
     if args.subject_type:
@@ -1045,7 +722,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("========== DEBUG: Prompt Begin ==========", file=sys.stderr)
         print(prompt, file=sys.stderr)
         print("=========== DEBUG: Prompt End ===========", file=sys.stderr)
-    caller = LLMCaller(llm_conf)
     if args.stream:
         print("[信息] 正在以流式方式接收模型输出…", file=sys.stderr)
         buf: List[str] = []

@@ -41,40 +41,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from scripts.common.llm import build_llm_registry, pick_llm
+from scripts.common.utils import repo_root as _repo_root, load_config as _load_config, slugify as _slugify
+
 
 # -----------------------------
 # 基础工具（独立实现，避免对下游脚本私有函数的强耦合）
 # -----------------------------
 
-def _find_repo_root() -> Path:
-    p = Path(__file__).resolve()
-    for parent in [p] + list(p.parents):
-        if (parent / "config.json").exists():
-            return parent
-    return Path(__file__).resolve().parents[-1]
-
-
-BASE_DIR = _find_repo_root()
+BASE_DIR = _repo_root()
 CONFIG_PATH = BASE_DIR / "config.json"
-
-
-def _load_config(path: Optional[str] = None) -> Dict[str, Any]:
-    cfg_path = Path(path) if path else CONFIG_PATH
-    if not cfg_path.exists():
-        raise SystemExit(f"[错误] 未找到配置文件: {cfg_path}")
-    try:
-        return json.loads(cfg_path.read_text(encoding="utf-8"))
-    except Exception as e:
-        raise SystemExit(f"[错误] 解析配置文件失败: {e}")
-
-
-def _slugify(text: str, fallback: str = "subject") -> str:
-    import re as _re
-    t = (text or "").replace("（", "(").replace("）", ")").replace("—", "-").strip()
-    t = _re.sub(r"[^0-9A-Za-z\-_.\s]", "", t)
-    t = _re.sub(r"\s+", "-", t)
-    t = t.strip("-_.").lower()
-    return t or fallback
 
 
 def _import_module_from_path(name: str, path: Path):
@@ -142,8 +118,7 @@ def run_toc_pipeline(
     )
     toc_mod = _import_module_from_path("_toc_pipeline", toc_path)
 
-    # 读取 LLM 配置（直接复用该脚本的加载逻辑与 dataclass）
-    gem_cfg = toc_mod.load_gemini_config(cfg, gemini_llm_key)
+    # 读取 Kimi 配置（OpenAI 兼容 + web_search 工具）
     kimi_cfg = toc_mod.load_kimi_config(cfg, kimi_llm_key)
 
     app = toc_mod.build_graph()
@@ -151,7 +126,7 @@ def run_toc_pipeline(
         "subject": subject,
         "top_n": max(1, int(top_n)),
         "max_parallel": max(1, int(max_parallel)),
-        "gemini": gem_cfg,
+        "recommender_llm_key": gemini_llm_key,
         "kimi": kimi_cfg,
         "expected_content": (expected_content or "").strip(),
         "print_prompt": bool(print_prompt),
@@ -211,19 +186,31 @@ def run_reconstruct(
     if len(items) < 2:
         raise ValueError(f"有效教材目录不足2份，无法进行重构。当前有效数量：{len(items)}")
 
-    # 选择生成与分类 LLM
-    llm_conf = recon_mod.choose_llm(cfg, reconstruct_llm_key)
-    default_classifier_key = (
-        "gemini-2.5-flash" if (cfg.get("llms") or {}).get("gemini-2.5-flash") else None
-    )
-    classifier_conf = recon_mod.choose_llm(cfg, classifier_llm_key or default_classifier_key)
-    classifier = recon_mod.LLMCaller(classifier_conf)
+    # 选择生成与分类 LLM（统一使用 shared LLM 组件）
+    registry = build_llm_registry(cfg)
+    caller = pick_llm(cfg, registry, reconstruct_llm_key)
+    # 分类模型优先 node_llm.classify_subject -> CLI -> 合理回退
+    node_llm = cfg.get("node_llm") or {}
+    preferred_cls_key = None
+    if isinstance(node_llm, dict):
+        k = node_llm.get("classify_subject")
+        if isinstance(k, str):
+            preferred_cls_key = k
+    # 若 CLI 指定，则覆盖 node 配置
+    if classifier_llm_key:
+        preferred_cls_key = classifier_llm_key
+    classifier_llm = pick_llm(cfg, registry, preferred_cls_key)
+    class _CompatCaller:
+        def __init__(self, llm):
+            self._llm = llm
+        def complete(self, prompt: str, max_tokens: Optional[int] = None) -> str:
+            return self._llm.complete(prompt, max_tokens=max_tokens)
 
     # 决定 subject_type
     if force_subject_type:
         subject_type = force_subject_type.strip().lower()
     else:
-        subject_type = recon_mod.classify_subject(subject, classifier)
+        subject_type = recon_mod.classify_subject(subject, _CompatCaller(classifier_llm))
         if subject_type not in ("theory", "tool"):
             raise SystemExit(f"[错误] 主题分类失败: {subject_type}")
     print(f"[信息] 主题分类结果: {subject} → {subject_type}", file=sys.stderr)
@@ -247,7 +234,6 @@ def run_reconstruct(
         print("=========== DEBUG: Prompt End ===========", file=sys.stderr)
 
     # 调用 LLM
-    caller = recon_mod.LLMCaller(llm_conf)
     if stream:
         print("[信息] 正在以流式方式接收模型输出…", file=sys.stderr)
         buf: List[str] = []
