@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Loader2, Sparkles, NotebookPen } from "lucide-react";
+import { Loader2, Sparkles, NotebookPen, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -405,7 +405,7 @@ const GeneratingOutlineView = () => {
             {(isSubscribing && jobId) && (
               <Button
                 variant="destructive"
-                className="h-7 px-2 text-xs"
+                className="h-7 px-3 text-xs font-semibold shadow-sm hover:shadow-md hover:brightness-110 hover:-translate-y-0.5 active:translate-y-0 focus-visible:ring-destructive/30"
                 onClick={cancelOutlineGeneration}
               >中止</Button>
             )}
@@ -429,7 +429,7 @@ const OutlineReadyView = () => {
 
   return (
     <div className="flex flex-col">
-      <h4 className="font-medium text-lg leading-relaxed text-center">大纲已生成</h4>
+      <h4 className="font-medium text-lg leading-relaxed">大纲已生成</h4>
       <div className="border-t pt-3 mt-3 space-y-3">
         {groups.length > 0 && (
           <div className="border rounded bg-muted/40">
@@ -470,6 +470,8 @@ const GeneratingContentView = () => {
   const { contentStage, isSubscribing, contentJobId, cancelContentGeneration, contentTotal } = useThemeGeneratorStore();
   const isGenerating = isSubscribing;
 
+  const failed = contentStage.status === 'error';
+
   const progressValue = useMemo(() => {
     if (contentStage.status === 'error') return 0;
     if (contentStage.status === 'completed') return 100;
@@ -501,7 +503,16 @@ const GeneratingContentView = () => {
     return 0;
   }, [contentStage, contentTotal]);
 
-  const failed = contentStage.status === 'error';
+  const phaseLabel = useMemo(() => {
+    if (failed) return '出错/取消';
+    if (contentStage.status === 'completed') return '发布完成';
+    if (contentStage.status === 'pending') return '准备生成';
+    const detail = String(contentStage.detail || '');
+    if (/审核/.test(detail)) return '审核生成内容';
+    if (/发布/.test(detail)) return '发布内容';
+    if (/初稿/.test(detail)) return '生成初稿';
+    return '生成初稿';
+  }, [contentStage, failed]);
 
   return (
     <div className="space-y-3">
@@ -509,7 +520,7 @@ const GeneratingContentView = () => {
       <div className="border-t pt-3 mt-3 space-y-3">
         <div className="space-y-2">
           <div className="text-sm">
-              <div>状态：{contentStage.status === 'completed' ? '完成' : (failed ? '出错/取消' : '进行中')}</div>
+              <div>当前阶段：{phaseLabel}</div>
               {!!contentStage.detail && <div className="text-[11px] text-muted-foreground mt-0.5">{contentStage.detail}</div>}
           </div>
           {!failed && (
@@ -523,7 +534,7 @@ const GeneratingContentView = () => {
             {(isGenerating && contentJobId) && (
               <Button
                 variant="destructive"
-                className="h-7 px-2 text-xs"
+                className="h-7 px-3 text-xs font-semibold shadow-sm hover:shadow-md hover:brightness-110 hover:-translate-y-0.5 active:translate-y-0 focus-visible:ring-destructive/30"
                 onClick={cancelContentGeneration}
               >中止</Button>
             )}
@@ -578,7 +589,15 @@ const ContentReadyView = () => {
 const LogViewToggle = () => {
     const { showLogs, setFormField } = useThemeGeneratorStore();
     return (
-        <Button variant="ghost" className="h-7 px-2 text-xs" onClick={() => setFormField('showLogs', !showLogs)}>{showLogs ? '收起' : '展开'}</Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs inline-flex items-center gap-1 justify-start pl-0 pr-2"
+          onClick={() => setFormField('showLogs', !showLogs)}
+        >
+          <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${showLogs ? 'rotate-90' : 'rotate-0'}`} />
+          {showLogs ? '收起日志' : '展开日志'}
+        </Button>
     );
 }
 

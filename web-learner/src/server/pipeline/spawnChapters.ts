@@ -68,7 +68,11 @@ async function computeSectionTotals(integratedPath: string): Promise<{ total: nu
   }
 }
 
-function parseLine(job: JobRecord, line: string, counters: { draft: number; total: number; perChapter: number[]; finalized: boolean }): void {
+function parseLine(
+  job: JobRecord,
+  line: string,
+  counters: { draft: number; total: number; perChapter: number[]; finalized: boolean; reviewStarted: boolean }
+): void {
   try {
     // 选择章节信息
     const mSel = line.match(/选择章节\s*:\s*\[([^\]]*)\]/);
@@ -92,10 +96,10 @@ function parseLine(job: JobRecord, line: string, counters: { draft: number; tota
       return;
     }
 
-    // 草稿保存（占 90%）
-    if (/\[已保存草稿\]/.test(line)) {
+    // 初稿保存（占 90%）
+    if (/\[已保存初稿\]/.test(line)) {
       counters.draft += 1;
-      const base = counters.total > 0 ? `草稿 ${counters.draft}/${counters.total}` : `草稿 ${counters.draft}`;
+      const base = counters.total > 0 ? `初稿 ${counters.draft}/${counters.total}` : `初稿 ${counters.draft}`;
       const prog = counters.total > 0 ? Math.min(0.9, (counters.draft / counters.total) * 0.9) : undefined;
       updateStage(job, 'content', {
         status: 'running',
@@ -105,10 +109,24 @@ function parseLine(job: JobRecord, line: string, counters: { draft: number; tota
       return;
     }
 
+    // 审核阶段入口
+    if (!counters.reviewStarted && line.includes('==== LLM Prompt [propose_fix] BEGIN ====')) {
+      counters.reviewStarted = true;
+      const reviewDetail = counters.total > 0
+        ? `初稿 ${counters.draft}/${counters.total} · 审核阶段`
+        : '审核阶段：模型输出质检中…';
+      updateStage(job, 'content', {
+        status: 'running',
+        detail: reviewDetail,
+        progress: counters.total > 0 ? Math.max(0.9, Math.min(0.98, counters.draft / counters.total)) : undefined,
+      });
+      return;
+    }
+
     // 最终落盘（发布完成，+10%）
     if (/\[大纲已保存\]/.test(line) || /大纲已保存\s*:\s*/.test(line)) {
       counters.finalized = true;
-      const base = counters.total > 0 ? `草稿 ${counters.draft}/${counters.total} · 已发布` : `已发布`;
+      const base = counters.total > 0 ? `初稿 ${counters.draft}/${counters.total} · 已发布` : `已发布`;
       updateStage(job, 'content', {
         status: 'running',
         detail: base,
@@ -182,7 +200,7 @@ export async function startChapters(params: GenerateContentParams) {
   // 初始阶段
   updateStage(job, 'content', {
     status: 'running',
-    detail: totals.total > 0 ? `草稿 0/${totals.total}` : '启动脚本中…',
+    detail: totals.total > 0 ? `初稿 0/${totals.total}` : '启动脚本中…',
     progress: totals.total > 0 ? 0 : undefined,
   });
   broadcast(job, 'log', { line: `[orchestrator] spawn: ${py} ${args.join(' ')}` });
@@ -195,7 +213,7 @@ export async function startChapters(params: GenerateContentParams) {
     updateStage(job, 'content', { status: 'running', detail: '准备生成章节内容' });
   });
 
-  const counters = { draft: 0, total: totals.total, perChapter: totals.perChapter, finalized: false };
+  const counters = { draft: 0, total: totals.total, perChapter: totals.perChapter, finalized: false, reviewStarted: false };
   const onData = (buf: Buffer) => {
     const text = buf.toString('utf-8');
     const lines = text.split(/\r?\n/);

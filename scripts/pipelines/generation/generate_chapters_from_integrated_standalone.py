@@ -546,7 +546,7 @@ async def _gen_one_point(llm, prompt: str, retries: int, delay: int, debug: bool
 
 
 async def _review_one_point_with_context(llm, point_id: str, content_md: str, peer_points: List[Dict[str, str]], debug: bool = False) -> Dict[str, Any]:
-    review_prompt_template = _prompt_from_catalog('review.default', '''你是资深的技术编辑，你的任务是审查下面的草稿，并以JSON格式提供具体的、可操作的反馈。
+    review_prompt_template = _prompt_from_catalog('review.default', '''你是资深的技术编辑，你的任务是审查下面的初稿，并以JSON格式提供具体的、可操作的反馈。
 
 【审查维度】
 1. 准确性: 内容与代码是否技术上准确？
@@ -818,7 +818,7 @@ async def generate_and_review_by_chapter_node(state: WorkState, llm_generate, ll
                 try:
                     draft_path = (drafts_dir / f"{sid}.md")
                     draft_path.write_text(txt_s, encoding="utf-8")
-                    logging.getLogger(__name__).info(f"[已保存草稿] {draft_path}")
+                    logging.getLogger(__name__).info(f"[已保存初稿] {draft_path}")
                 except Exception:
                     pass
         else:
@@ -857,7 +857,7 @@ async def generate_and_review_by_chapter_node(state: WorkState, llm_generate, ll
                 try:
                     draft_path = (drafts_dir / f"{sid}.md")
                     draft_path.write_text(txt_s, encoding="utf-8")
-                    logging.getLogger(__name__).info(f"[已保存草稿] {draft_path}")
+                    logging.getLogger(__name__).info(f"[已保存初稿] {draft_path}")
                 except Exception:
                     pass
 
@@ -909,7 +909,7 @@ async def generate_and_review_by_chapter_node(state: WorkState, llm_generate, ll
                     try:
                         draft_path = (drafts_dir / f"{sid}.md")
                         draft_path.write_text(txt_s, encoding="utf-8")
-                        logging.getLogger(__name__).info(f"[已保存草稿] {draft_path}")
+                        logging.getLogger(__name__).info(f"[已保存初稿] {draft_path}")
                     except Exception:
                         pass
 

@@ -21,8 +21,8 @@ function repoRoot(): string {
 function parseLineForStages(job: JobRecord, line: string) {
   try {
     // collect stage start (兼容不同提示语)
-    if (/\[1\/2\]\s*调用\s*Gemini\s*推荐教材/.test(line) || /运行\s*TOC\s*流水线/.test(line)) {
-      updateStage(job, 'collect', { status: 'running', detail: '调用 Gemini 推荐经典教材' });
+    if (/\[1\/2\]\s*调用.*推荐教材/.test(line) || /启动教材目录生成流水线/.test(line) || /运行\s*TOC\s*流水线/.test(line)) {
+      updateStage(job, 'collect', { status: 'running', detail: '调用推荐教材 LLM' });
     }
     const mPar = line.match(/并行检索教材目录 .*待检索=(\d+)\s*本/);
     if (mPar) {
@@ -47,17 +47,16 @@ function parseLineForStages(job: JobRecord, line: string) {
     }
 
     // outline stage
-    if (/主题分类结果:/.test(line)) {
-      updateStage(job, 'outline', { status: 'running', detail: '开始整合生成大纲' });
-    }
-    if (/正在以流式方式接收模型输出/.test(line)) {
-      updateStage(job, 'outline', { status: 'running', detail: '模型输出中…' });
-    }
-    if (/大纲重构: 成功/.test(line)) {
+    if (/大纲重构\s*[:：]\s*成功/.test(line)) {
       updateStage(job, 'outline', { status: 'completed', progress: 1, detail: '完成' });
-    }
-    if (/大纲重构: 失败/.test(line)) {
+    } else if (/大纲重构\s*[:：]\s*失败/.test(line)) {
       updateStage(job, 'outline', { status: 'error', detail: '失败' });
+    } else if (/大纲重构\s*[:：]/.test(line)) {
+      updateStage(job, 'outline', { status: 'running', detail: '整合大纲中…' });
+    } else if (/主题分类\s*[:：]/.test(line)) {
+      updateStage(job, 'outline', { status: 'running', detail: '开始整合生成大纲' });
+    } else if (/正在以流式方式接收模型输出/.test(line)) {
+      updateStage(job, 'outline', { status: 'running', detail: '模型输出中…' });
     }
 
     // output path
