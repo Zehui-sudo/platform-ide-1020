@@ -112,7 +112,9 @@ export interface LearningState {
   loading: {
     path: boolean;
     section: boolean;
+    allPaths: boolean;
   };
+  loadingPathSubject?: string | null;
   error: {
     path: string | null;
     section: string | null;

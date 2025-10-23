@@ -285,7 +285,9 @@ export const useLearningStore = create<LearningState & LearningActions>()(
       loading: {
         path: false,
         section: false,
+        allPaths: false,
       },
+      loadingPathSubject: null,
       error: {
         path: null,
         section: null,
@@ -327,10 +329,10 @@ export const useLearningStore = create<LearningState & LearningActions>()(
       },
       initializeAllPaths: async () => {
         const state = get();
-        if (state.loading.path) return;
+        if (state.loading.allPaths) return;
         
         set(state => ({
-          loading: { ...state.loading, path: true },
+          loading: { ...state.loading, allPaths: true },
           error: { ...state.error, path: null }
         }));
         
@@ -355,7 +357,7 @@ export const useLearningStore = create<LearningState & LearningActions>()(
           
           set({
             loadedPaths,
-            loading: { ...get().loading, path: false },
+            loading: { ...get().loading, allPaths: false },
             error: { ...get().error, path: null }
           });
           
@@ -369,7 +371,7 @@ export const useLearningStore = create<LearningState & LearningActions>()(
           }
         } catch (error) {
           set({
-            loading: { ...get().loading, path: false },
+            loading: { ...get().loading, allPaths: false },
             error: { ...get().error, path: error instanceof Error ? error.message : 'Failed to initialize paths' }
           });
         }
@@ -377,12 +379,13 @@ export const useLearningStore = create<LearningState & LearningActions>()(
       
       loadPath: async (subject: string) => {
         const state = get();
-        if (state.loading.path || state.currentPath?.subject === subject) {
+        if ((state.loading.path && state.loadingPathSubject === subject) || state.currentPath?.subject === subject) {
           return;
         }
         
         set(state => ({
           loading: { ...state.loading, path: true },
+          loadingPathSubject: subject,
           error: { ...state.error, path: null }
         }));
 
@@ -410,6 +413,7 @@ export const useLearningStore = create<LearningState & LearningActions>()(
             currentPath: path,
             loadedPaths: updatedLoadedPaths,
             loading: { ...get().loading, path: false },
+            loadingPathSubject: null,
             error: { ...get().error, path: null },
             preferredSubject: targetLang,
           });
@@ -437,6 +441,7 @@ export const useLearningStore = create<LearningState & LearningActions>()(
         } catch (error) {
           set({
             loading: { ...get().loading, path: false },
+            loadingPathSubject: null,
             error: { ...get().error, path: error instanceof Error ? error.message : 'Failed to load learning path' }
           });
         }

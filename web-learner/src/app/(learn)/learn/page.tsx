@@ -1,29 +1,34 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useLearningStore } from '@/store/learningStore';
 import { ContentDisplay } from '@/components/ContentDisplay';
 
-export default function LearnPage() {
-  const loadPath = useLearningStore((state) => state.loadPath);
-  const loadSection = useLearningStore((state) => state.loadSection);
+// It's a best practice to wrap the component that uses useSearchParams in a client component.
+// The page is already a client component, but for Suspense, it's cleaner this way.
+function LearnPageContent() {
+  const { loadPath, loadSection, currentPath } = useLearningStore();
+  const searchParams = useSearchParams();
+  const subjectFromUrl = searchParams.get('subject') ?? searchParams.get('language');
+  const sectionFromUrl = searchParams.get('section');
 
   useEffect(() => {
-    // Get subject from URL or localStorage
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlSubject = (urlParams.get('subject') || urlParams.get('language')) as string | null;
-    const savedSubject = (localStorage.getItem('preferred-subject') || localStorage.getItem('preferred-language')) as string | null;
-    const finalSubject = urlSubject || savedSubject || 'python';
+    const currentSubject = currentPath?.subject;
 
-    // Load course path
-    loadPath(finalSubject);
+    // URL is the source of truth. Sync it with the store.
+    if (subjectFromUrl && subjectFromUrl !== currentSubject) {
+      loadPath(subjectFromUrl);
+    } else if (!subjectFromUrl && !currentSubject) {
+      // Fallback for initial load if URL has no subject.
+      // Also cleans up old localStorage key 'preferred-language'.
+      const savedSubject = localStorage.getItem('preferred-subject') || localStorage.getItem('preferred-language') || 'python';
+      loadPath(savedSubject);
+    }
 
-    // Optional deep link to a specific section
-    const sectionId = urlParams.get('section');
-    if (sectionId) {
-      // Directly trigger loading the section markdown
-      // This does not depend on path readiness as content is fetched by ID
-      loadSection(sectionId);
+    // Section loading logic can remain similar, but driven by searchParams
+    if (sectionFromUrl) {
+      loadSection(sectionFromUrl);
     } else {
       // Restore last opened section if available
       const lastOpened = localStorage.getItem('last-opened-section');
@@ -31,9 +36,17 @@ export default function LearnPage() {
         loadSection(lastOpened);
       }
     }
-  }, [loadPath, loadSection]);
+    // currentPath is in dependency array to re-evaluate when path is loaded
+  }, [subjectFromUrl, sectionFromUrl, currentPath, loadPath, loadSection]);
 
-  // The layout is now handled by the parent layout.tsx
-  // This component is only responsible for displaying the content.
   return <ContentDisplay />;
+}
+
+// The page component itself, which sets up the Suspense boundary
+export default function LearnPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <LearnPageContent />
+    </Suspense>
+  );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { LearnNavBar } from '@/components/LearnNavBar';
 import dynamic from 'next/dynamic';
@@ -22,48 +23,45 @@ import { PanelRightClose, PanelLeftClose, Bot, List } from 'lucide-react';
 import type { ImperativePanelHandle } from 'react-resizable-panels';
 import { useLearningStore } from '@/store/learningStore';
 
-// 最小宽度（像素）约束
-const NAV_MIN_PX = 280;
-const CONTENT_MIN_PX = 640;
-const AI_MIN_PX = 320;
-// 中等屏默认折叠 AI 的阈值（可按需微调）
-const MID_SIZE_AI_COLLAPSE_WIDTH = 1280;
+// This new component will contain the data loading logic and the original layout's JSX.
+// It's wrapped in a client component that can use Suspense and Search Params.
+function LearnLayoutContent({ children }: { children: React.ReactNode }) {
+  const { loadPath, loadSection, currentPath, uiState, updateUIState } = useLearningStore();
+  const searchParams = useSearchParams();
+  const subjectFromUrl = searchParams.get('subject') ?? searchParams.get('language');
+  const sectionFromUrl = searchParams.get('section');
 
-// Lazy-load heavy sidebars to reduce first paint work during transition
-const NavigationSidebarLazy = dynamic(
-  () => import('@/components/NavigationSidebar').then((m) => m.NavigationSidebar),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="h-full overflow-hidden min-w-0 p-3 text-sm text-muted-foreground">加载目录...</div>
-    ),
-  }
-);
+  // Core data loading logic, now lives in the layout
+  React.useEffect(() => {
+    const currentSubject = currentPath?.subject;
 
-const AIChatSidebarLazy = dynamic(
-  () => import('@/components/AIChatSidebar').then((m) => m.AIChatSidebar),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="h-full pl-4 min-w-0 overflow-hidden p-3 text-sm text-muted-foreground">加载 AI 助手...</div>
-    ),
-  }
-);
+    // URL is the source of truth. Sync it with the store.
+    if (subjectFromUrl && subjectFromUrl !== currentSubject) {
+      loadPath(subjectFromUrl);
+    } else if (!subjectFromUrl && !currentSubject) {
+      // Fallback for initial load if URL has no subject.
+      const savedSubject = localStorage.getItem('preferred-subject') || localStorage.getItem('preferred-language') || 'python';
+      loadPath(savedSubject);
+    }
 
-export default function LearnLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+    if (sectionFromUrl) {
+      loadSection(sectionFromUrl);
+    } else {
+      const lastOpened = localStorage.getItem('last-opened-section');
+      if (lastOpened) {
+        loadSection(lastOpened);
+      }
+    }
+  }, [subjectFromUrl, sectionFromUrl, currentPath, loadPath, loadSection]);
+
+  // All the original state and JSX from LearnLayout is moved here
   const navPanelRef = React.useRef<ImperativePanelHandle>(null);
   const aiPanelRef = React.useRef<ImperativePanelHandle>(null);
   const desktopContainerRef = React.useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = React.useState<number>(0);
-  const { uiState, updateUIState } = useLearningStore();
   const isNavCollapsed = uiState.navCollapsed || false;
   const isAiCollapsed = uiState.aiCollapsed || false;
   const [deferHeavy, setDeferHeavy] = React.useState(false);
-  // 用户手动操作后的短暂抑制自动折叠（避免与用户行为打架）
   const autoSuppressUntilRef = React.useRef<number>(0);
 
   const toggleNavSidebar = () => {
@@ -77,7 +75,6 @@ export default function LearnLayout({
         updateUIState({ navCollapsed: true });
       }
     }
-    // 抑制自动规则几秒钟
     autoSuppressUntilRef.current = Date.now() + 4000;
   };
 
@@ -92,19 +89,12 @@ export default function LearnLayout({
         updateUIState({ aiCollapsed: true });
       }
     }
-    // 抑制自动规则几秒钟
     autoSuppressUntilRef.current = Date.now() + 4000;
   };
 
-  // 容器尺寸变化时动态计算“是否可内联展开”
-  const canOpenNavInline = React.useMemo(() => {
-    return containerWidth >= NAV_MIN_PX + CONTENT_MIN_PX + (isAiCollapsed ? 0 : AI_MIN_PX);
-  }, [containerWidth, isAiCollapsed]);
-  const canOpenAiInline = React.useMemo(() => {
-    return containerWidth >= AI_MIN_PX + CONTENT_MIN_PX + (isNavCollapsed ? 0 : NAV_MIN_PX);
-  }, [containerWidth, isNavCollapsed]);
+  const canOpenNavInline = React.useMemo(() => containerWidth >= 280 + 640 + (isAiCollapsed ? 0 : 320), [containerWidth, isAiCollapsed]);
+  const canOpenAiInline = React.useMemo(() => containerWidth >= 320 + 640 + (isNavCollapsed ? 0 : 280), [containerWidth, isNavCollapsed]);
 
-  // On mount, sync collapsed state from store to panels
   React.useEffect(() => {
     const nav = navPanelRef.current;
     const ai = aiPanelRef.current;
@@ -118,83 +108,48 @@ export default function LearnLayout({
     }
   }, [isNavCollapsed, isAiCollapsed]);
 
-  // Defer mounting heavy sidebars a tick after route transition
   React.useEffect(() => {
     const t = setTimeout(() => setDeferHeavy(true), 250);
     return () => clearTimeout(t);
   }, []);
 
-  // 桌面布局：根据容器宽度自适应折叠/展开
   React.useEffect(() => {
     const el = desktopContainerRef.current;
     if (!el) return;
-
     const applyResponsive = (width: number) => {
       setContainerWidth(width);
-      // 避免与用户刚刚手动切换打架
       if (Date.now() < autoSuppressUntilRef.current) return;
-
-      // 当前折叠状态
       const { navCollapsed, aiCollapsed } = useLearningStore.getState().uiState;
-
-      let nextNavCollapsed = false;
-      let nextAiCollapsed = false;
-
-      if (width >= NAV_MIN_PX + CONTENT_MIN_PX + AI_MIN_PX) {
-        // 全部可同时显示；中等屏默认折叠 AI
-        nextNavCollapsed = false;
-        nextAiCollapsed = width < MID_SIZE_AI_COLLAPSE_WIDTH;
-      } else if (width >= NAV_MIN_PX + CONTENT_MIN_PX) {
-        // 优先保留内容+目录，折叠 AI
-        nextNavCollapsed = false;
-        nextAiCollapsed = true;
-      } else if (width >= CONTENT_MIN_PX) {
-        // 仅保留内容
-        nextNavCollapsed = true;
-        nextAiCollapsed = true;
-      } else {
-        // 更窄：在 <md 会走移动端抽屉，这里也折叠两侧
-        nextNavCollapsed = true;
-        nextAiCollapsed = true;
+      const nextNavCollapsed = width < 280 + 640;
+      let nextAiCollapsed = width < 280 + 640 + 320;
+      if (width >= 280 + 640 + 320) {
+        nextAiCollapsed = width < 1280;
       }
-
       if (nextNavCollapsed !== navCollapsed || nextAiCollapsed !== aiCollapsed) {
         updateUIState({ navCollapsed: nextNavCollapsed, aiCollapsed: nextAiCollapsed });
       }
     };
-
-    const ro = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) applyResponsive(entry.contentRect.width);
-    });
+    const ro = new ResizeObserver((entries) => entries[0] && applyResponsive(entries[0].contentRect.width));
     ro.observe(el);
-
-    // 初始化调用
     const initial = el.getBoundingClientRect().width;
     setContainerWidth(initial);
     applyResponsive(initial);
-
     return () => ro.disconnect();
   }, [updateUIState]);
 
-  // 将像素级最小宽度转换为当前容器下的百分比，供 Panel minSize 使用
-  const navMinPercent = React.useMemo(() => {
-    if (!containerWidth) return 22;
-    return Math.min(40, (NAV_MIN_PX / containerWidth) * 100);
-  }, [containerWidth]);
-  const contentMinPercent = React.useMemo(() => {
-    if (!containerWidth) return 40;
-    return Math.min(90, (CONTENT_MIN_PX / containerWidth) * 100);
-  }, [containerWidth]);
-  const aiMinPercent = React.useMemo(() => {
-    if (!containerWidth) return 22;
-    return Math.min(40, (AI_MIN_PX / containerWidth) * 100);
-  }, [containerWidth]);
+  const navMinPercent = React.useMemo(() => containerWidth ? Math.min(40, (280 / containerWidth) * 100) : 22, [containerWidth]);
+  const contentMinPercent = React.useMemo(() => containerWidth ? Math.min(90, (640 / containerWidth) * 100) : 40, [containerWidth]);
+  const aiMinPercent = React.useMemo(() => containerWidth ? Math.min(40, (320 / containerWidth) * 100) : 22, [containerWidth]);
+
+  // Lazy-load heavy sidebars
+  const NavigationSidebarLazy = React.useMemo(() => dynamic(() => import('@/components/NavigationSidebar').then(m => m.NavigationSidebar), { ssr: false, loading: () => <div className="p-3 text-sm text-muted-foreground">加载目录...</div> }), []);
+  const AIChatSidebarLazy = React.useMemo(() => dynamic(() => import('@/components/AIChatSidebar').then(m => m.AIChatSidebar), { ssr: false, loading: () => <div className="p-3 text-sm text-muted-foreground">加载 AI 助手...</div> }), []);
 
   return (
     <div className="flex flex-col h-screen">
       <LearnNavBar />
       <main className="flex-1 overflow-hidden relative">
+        {/* ... (rest of the JSX is identical to the original file) ... */}
         {isNavCollapsed && canOpenNavInline && (
           <TooltipProvider>
             <Tooltip>
@@ -233,7 +188,6 @@ export default function LearnLayout({
             </Tooltip>
           </TooltipProvider>
         )}
-        {/* Desktop layout (≥ md): 3-panel resizable */}
         <div ref={desktopContainerRef} className="hidden md:flex h-full w-full p-4 bg-background min-w-0 overflow-hidden">
           <ResizablePanelGroup
             direction="horizontal"
@@ -250,11 +204,7 @@ export default function LearnLayout({
               className="min-w-0"
             >
               <div className="h-full overflow-hidden min-w-0">
-                {deferHeavy ? (
-                  <NavigationSidebarLazy toggleSidebar={toggleNavSidebar} />
-                ) : (
-                  <div className="p-3 text-sm text-muted-foreground">加载目录...</div>
-                )}
+                {deferHeavy ? <NavigationSidebarLazy toggleSidebar={toggleNavSidebar} /> : <div className="p-3 text-sm text-muted-foreground">加载目录...</div>}
               </div>
             </ResizablePanel>
             <ResizableHandle withHandle className="opacity-0" />
@@ -276,137 +226,41 @@ export default function LearnLayout({
               className="min-w-0"
             >
               <div className="h-full pl-4 min-w-0 overflow-hidden">
-                {deferHeavy ? (
-                  <AIChatSidebarLazy toggleSidebar={toggleAiSidebar} />
-                ) : (
-                  <div className="p-3 text-sm text-muted-foreground">加载 AI 助手...</div>
-                )}
+                {deferHeavy ? <AIChatSidebarLazy toggleSidebar={toggleAiSidebar} /> : <div className="p-3 text-sm text-muted-foreground">加载 AI 助手...</div>}
               </div>
             </ResizablePanel>
           </ResizablePanelGroup>
         </div>
-        {/* Mobile layout (< md): content + floating drawers for Nav & AI */}
         <div className="md:hidden h-full w-full relative">
-          <div className="h-full w-full overflow-auto">
-            {children}
-          </div>
-          {/* Floating Triggers */}
+          <div className="h-full w-full overflow-auto">{children}</div>
           <div className="pointer-events-none fixed inset-x-0 bottom-4 flex items-end justify-between px-4 gap-2">
-            {/* Nav Drawer */}
             <Sheet>
-              <SheetTrigger asChild>
-                <Button
-                  size="icon"
-                  className="h-12 w-12 rounded-full shadow-md pointer-events-auto"
-                  aria-label="打开目录"
-                >
-                  <List className="h-5 w-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="p-0">
-                <SheetHeader className="p-3 pb-0">
-                  <SheetTitle>课程目录</SheetTitle>
-                </SheetHeader>
-                <div className="h-full overflow-hidden min-w-0">
-                  {deferHeavy ? (
-                    <NavigationSidebarLazy toggleSidebar={() => {}} />
-                  ) : (
-                    <div className="p-3 text-sm text-muted-foreground">加载目录...</div>
-                  )}
-                </div>
-              </SheetContent>
+              <SheetTrigger asChild><Button size="icon" className="h-12 w-12 rounded-full shadow-md pointer-events-auto" aria-label="打开目录"><List className="h-5 w-5" /></Button></SheetTrigger>
+              <SheetContent side="left" className="p-0"><SheetHeader className="p-3 pb-0"><SheetTitle>课程目录</SheetTitle></SheetHeader><div className="h-full overflow-hidden min-w-0">{deferHeavy ? <NavigationSidebarLazy toggleSidebar={() => {}} /> : <div className="p-3 text-sm text-muted-foreground">加载目录...</div>}</div></SheetContent>
             </Sheet>
-
-            {/* AI Drawer */}
             <Sheet>
-              <SheetTrigger asChild>
-                <Button
-                  size="icon"
-                  className="h-12 w-12 rounded-full shadow-md pointer-events-auto"
-                  aria-label="打开AI助手"
-                >
-                  <Bot className="h-5 w-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="right" className="p-0">
-                <SheetHeader className="p-3 pb-0">
-                  <SheetTitle>AI 助手</SheetTitle>
-                </SheetHeader>
-                <div className="h-full overflow-hidden min-w-0 p-3">
-                  {deferHeavy ? (
-                    <AIChatSidebarLazy toggleSidebar={() => {}} />
-                  ) : (
-                    <div className="p-3 text-sm text-muted-foreground">加载 AI 助手...</div>
-                  )}
-                </div>
-              </SheetContent>
+              <SheetTrigger asChild><Button size="icon" className="h-12 w-12 rounded-full shadow-md pointer-events-auto" aria-label="打开AI助手"><Bot className="h-5 w-5" /></Button></SheetTrigger>
+              <SheetContent side="right" className="p-0"><SheetHeader className="p-3 pb-0"><SheetTitle>AI 助手</SheetTitle></SheetHeader><div className="h-full overflow-hidden min-w-0 p-3">{deferHeavy ? <AIChatSidebarLazy toggleSidebar={() => {}} /> : <div className="p-3 text-sm text-muted-foreground">加载 AI 助手...</div>}</div></SheetContent>
             </Sheet>
           </div>
         </div>
-
-        {/* Desktop floating drawers (≥ md & 窄宽度): 左右橙色圆按钮触发 Sheet */}
         <div className="hidden md:block">
           <div className="pointer-events-none fixed inset-x-0 bottom-4 flex items-end justify-between px-4 gap-2">
-            {/* 当目录折叠且不可内联展开时，显示左侧浮动按钮 */}
-            {isNavCollapsed && !canOpenNavInline ? (
-              <Sheet>
-                <SheetTrigger asChild>
-                  <Button
-                    size="icon"
-                    className="h-12 w-12 rounded-full shadow-md pointer-events-auto"
-                    aria-label="打开目录"
-                  >
-                    <List className="h-5 w-5" />
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="left" className="p-0">
-                  <SheetHeader className="p-3 pb-0">
-                    <SheetTitle>课程目录</SheetTitle>
-                  </SheetHeader>
-                  <div className="h-full overflow-hidden min-w-0">
-                    {deferHeavy ? (
-                      <NavigationSidebarLazy toggleSidebar={() => {}} />
-                    ) : (
-                      <div className="p-3 text-sm text-muted-foreground">加载目录...</div>
-                    )}
-                  </div>
-                </SheetContent>
-              </Sheet>
-            ) : (
-              <div />
-            )}
-
-            {/* 当 AI 折叠且不可内联展开时，显示右侧浮动按钮 */}
-            {isAiCollapsed && !canOpenAiInline ? (
-              <Sheet>
-                <SheetTrigger asChild>
-                  <Button
-                    size="icon"
-                    className="h-12 w-12 rounded-full shadow-md pointer-events-auto"
-                    aria-label="打开AI助手"
-                  >
-                    <Bot className="h-5 w-5" />
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="right" className="p-0">
-                  <SheetHeader className="p-3 pb-0">
-                    <SheetTitle>AI 助手</SheetTitle>
-                  </SheetHeader>
-                  <div className="h-full overflow-hidden min-w-0 p-3">
-                    {deferHeavy ? (
-                      <AIChatSidebarLazy toggleSidebar={() => {}} />
-                    ) : (
-                      <div className="p-3 text-sm text-muted-foreground">加载 AI 助手...</div>
-                    )}
-                  </div>
-                </SheetContent>
-              </Sheet>
-            ) : (
-              <div />
-            )}
+            {isNavCollapsed && !canOpenNavInline ? <Sheet><SheetTrigger asChild><Button size="icon" className="h-12 w-12 rounded-full shadow-md pointer-events-auto" aria-label="打开目录"><List className="h-5 w-5" /></Button></SheetTrigger><SheetContent side="left" className="p-0"><SheetHeader className="p-3 pb-0"><SheetTitle>课程目录</SheetTitle></SheetHeader><div className="h-full overflow-hidden min-w-0">{deferHeavy ? <NavigationSidebarLazy toggleSidebar={() => {}} /> : <div className="p-3 text-sm text-muted-foreground">加载目录...</div>}</div></SheetContent></Sheet> : <div />}
+            {isAiCollapsed && !canOpenAiInline ? <Sheet><SheetTrigger asChild><Button size="icon" className="h-12 w-12 rounded-full shadow-md pointer-events-auto" aria-label="打开AI助手"><Bot className="h-5 w-5" /></Button></SheetTrigger><SheetContent side="right" className="p-0"><SheetHeader className="p-3 pb-0"><SheetTitle>AI 助手</SheetTitle></SheetHeader><div className="h-full overflow-hidden min-w-0 p-3">{deferHeavy ? <AIChatSidebarLazy toggleSidebar={() => {}} /> : <div className="p-3 text-sm text-muted-foreground">加载 AI 助手...</div>}</div></SheetContent></Sheet> : <div />}
           </div>
         </div>
       </main>
     </div>
+  );
+}
+
+// The main export is now a wrapper that provides Suspense,
+// allowing LearnLayoutContent to safely use useSearchParams.
+export default function LearnLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <React.Suspense fallback={<div>Loading Layout...</div>}>
+      <LearnLayoutContent>{children}</LearnLayoutContent>
+    </React.Suspense>
   );
 }

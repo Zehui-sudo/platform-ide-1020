@@ -1,6 +1,7 @@
 
 "use client";
 
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { useMemo } from "react";
@@ -42,6 +43,7 @@ type LearnFontItem = {
 
 export function LearnNavBar() {
   const hydrated = useHydratedStore();
+  const router = useRouter();
   const { currentPath, currentSection, loadPath, loadSection, fontSize, setFontSize, userProgress } = useLearningStore();
   const fontFamilyId = useLearningStore((s) => s.fontFamilyId);
   const setFontFamily = useLearningStore((s) => s.setFontFamily);
@@ -141,6 +143,7 @@ export function LearnNavBar() {
   const handleSubjectChange = (newSubject: string) => {
     if (newSubject !== subject) {
       loadPath(newSubject);
+      router.replace(`/learn?subject=${newSubject}`);
     }
   };
 

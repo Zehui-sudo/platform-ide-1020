@@ -37,7 +37,7 @@ export default function HomePage() {
   useEffect(() => {
     try {
       if (router.prefetch) {
-        router.prefetch("/learn?language=python");
+        router.prefetch("/learn?subject=python");
       }
     } catch {}
   }, [router]);
@@ -52,14 +52,14 @@ export default function HomePage() {
     } catch {}
     // Start navigation immediately for overlapping transition
     setTimeout(() => {
-      router.push("/learn?language=python");
+      router.push("/learn?subject=python");
     }, 300);
   };
 
   return (
     <div className={smileySans.className}>
       {/* Hidden link as a secondary prefetch hint */}
-      <Link href="/learn?language=python" prefetch aria-hidden className="sr-only">
+      <Link href="/learn?subject=python" prefetch aria-hidden className="sr-only">
         Prefetch Learn
       </Link>
 
