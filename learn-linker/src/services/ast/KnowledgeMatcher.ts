@@ -172,7 +172,9 @@ export class KnowledgeMatcher {
                   featureCount.intermediateCount + 
                   featureCount.advancedCount;
 
-    if (total === 0) return 'beginner';
+    if (total === 0) {
+      return 'beginner';
+    }
 
     const advancedRatio = featureCount.advancedCount / total;
     const intermediateRatio = featureCount.intermediateCount / total;
@@ -261,11 +263,15 @@ export class KnowledgeMatcher {
     const visited = new Set<string>();
     
     const traverse = (id: string) => {
-      if (visited.has(id)) return;
+      if (visited.has(id)) {
+        return;
+      }
       visited.add(id);
       
       const knowledge = this.knowledgeBase.get(id);
-      if (!knowledge) return;
+      if (!knowledge) {
+        return;
+      }
       
       if (knowledge.dependencies) {
         for (const depId of knowledge.dependencies) {
@@ -287,7 +293,9 @@ export class KnowledgeMatcher {
     primaryKnowledge: string | null,
     userLevel: string
   ): string[] {
-    if (!primaryKnowledge) return [];
+    if (!primaryKnowledge) {
+      return [];
+    }
     
     const chain = this.getDependencyChain(primaryKnowledge);
     

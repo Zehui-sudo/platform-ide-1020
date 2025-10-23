@@ -22,20 +22,21 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+type OutlineRenderableSection = string | { id?: string; title?: string };
+
+type OutlineRenderableGroup = {
+  id?: string;
+  title?: string;
+  sections?: OutlineRenderableSection[];
+};
+
 // Rehydrate on initial load
 let rehydrated = false;
 
 export function ThemeGenerator() {
-  const store = useThemeGeneratorStore();
-  const { 
-    stage, themeName, generationStyle, content, 
-    jobId, contentJobId, outlineResult, contentResult,
-    logs, showLogs, isSubscribing,
-    collectStage, outlineStage, contentStage,
-    setFormField, startOutlineGeneration, startContentGeneration,
-    cancelContentGeneration, loadCourse, reset,
-    uiOpen, setUiOpen,
-  } = store;
+  const stage = useThemeGeneratorStore((state) => state.stage);
+  const uiOpen = useThemeGeneratorStore((state) => state.uiOpen);
+  const setUiOpen = useThemeGeneratorStore((state) => state.setUiOpen);
 
   // 自动在进入非 idle 阶段时打开弹层，但不在用户手动关闭后强制打开
   useEffect(() => {
@@ -59,8 +60,6 @@ export function ThemeGenerator() {
       gradientClass: `sparkles-grad-${safe}`,
     };
   }, [reactId]);
-
-  const isGenerating = stage === 'generating_outline' || stage === 'generating_content' || isSubscribing;
 
   const renderContent = () => {
     switch (stage) {
@@ -118,13 +117,12 @@ export function ThemeGenerator() {
 
 const DebugStageSelectorInternal = () => {
   const searchParams = useSearchParams();
+  const { setFormField, setUiOpen } = useThemeGeneratorStore();
   const showDebug = searchParams.get('debug') === 'true';
 
   if (process.env.NODE_ENV !== 'development' || !showDebug) {
     return null;
   }
-
-  const { setFormField, setUiOpen } = useThemeGeneratorStore();
 
   const stages: GenerationStage[] = [
     'idle',
@@ -420,11 +418,27 @@ const GeneratingOutlineView = () => {
 const OutlineReadyView = () => {
   const { outlineResult, startContentGeneration, reset } = useThemeGeneratorStore();
 
-  const outline = outlineResult?.reconstructed_outline || null;
-  let groups: any[] = [];
-  if (Array.isArray(outline?.groups)) groups = outline.groups;
-  else if (Array.isArray(outline?.chapters)) groups = outline.chapters;
-  else if (Array.isArray(outline?.sections)) groups = [{ title: outline?.title || '目录', sections: outline.sections }];
+  const outline = outlineResult?.reconstructed_outline ?? null;
+  const groups: OutlineRenderableGroup[] = (() => {
+    if (!outline) {
+      return [];
+    }
+
+    if (Array.isArray(outline.groups) && outline.groups.length > 0) {
+      return outline.groups;
+    }
+
+    if (Array.isArray(outline.chapters) && outline.chapters.length > 0) {
+      return outline.chapters;
+    }
+
+    if (Array.isArray(outline.sections)) {
+      return [{ title: outline.title ?? '目录', sections: outline.sections }];
+    }
+
+    return [];
+  })();
+
   const title = outline?.title || '生成目录';
 
   return (
@@ -435,13 +449,13 @@ const OutlineReadyView = () => {
           <div className="border rounded bg-muted/40">
             <div className="px-2 py-1.5 text-xs font-medium border-b">{title} · 目录预览</div>
             <div className="max-h-56 overflow-auto p-2">
-              {groups.map((g: any, gi: number) => (
-                <div key={g?.id || gi} className="mb-2 last:mb-0">
-                  <div className="text-xs font-medium leading-snug">{g?.title || `第${gi + 1}章`}</div>
+              {groups.map((group, groupIndex) => (
+                <div key={group?.id || groupIndex} className="mb-2 last:mb-0">
+                  <div className="text-xs font-medium leading-snug">{group?.title || `第${groupIndex + 1}章`}</div>
                   <ul className="mt-1 pl-4 list-disc space-y-0.5">
-                    {Array.isArray(g?.sections) && g.sections.map((s: any, si: number) => (
-                      <li key={s?.id || si} className="text-[11px] leading-tight">
-                        {typeof s === 'string' ? s : (s?.title || `节 ${gi + 1}.${si + 1}`)}
+                    {Array.isArray(group?.sections) && group.sections.map((section, sectionIndex) => (
+                      <li key={typeof section === 'string' ? sectionIndex : section?.id || sectionIndex} className="text-[11px] leading-tight">
+                        {typeof section === 'string' ? section : (section?.title || `节 ${groupIndex + 1}.${sectionIndex + 1}`)}
                       </li>
                     ))}
                   </ul>

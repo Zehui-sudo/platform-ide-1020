@@ -266,8 +266,14 @@ export const difficultyClassification = {
  * 判断特征的难度级别
  */
 export function getFeatureDifficulty(feature: string): 'basic' | 'intermediate' | 'advanced' {
-  if (difficultyClassification.basic.includes(feature)) return 'basic';
-  if (difficultyClassification.intermediate.includes(feature)) return 'intermediate';
-  if (difficultyClassification.advanced.includes(feature)) return 'advanced';
+  if (difficultyClassification.basic.includes(feature)) {
+    return 'basic';
+  }
+  if (difficultyClassification.intermediate.includes(feature)) {
+    return 'intermediate';
+  }
+  if (difficultyClassification.advanced.includes(feature)) {
+    return 'advanced';
+  }
   return 'basic'; // 默认为基础
 }

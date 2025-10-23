@@ -58,7 +58,6 @@ export function ContentDisplay() {
       if (debugRef.current && atBottom && !prevAtBottomRef.current) {
         // 仅在首次到达底部时打印一次
         // 打印当前节和滚动参数，便于诊断
-        // eslint-disable-next-line no-console
         console.log('[auto-complete] reached bottom', {
           sectionId: currentSection?.id,
           scrollTop: viewport.scrollTop,
@@ -94,7 +93,6 @@ export function ContentDisplay() {
     const prevIndex = sections.findIndex((s) => s.id === prevId);
     const nextIndex = sections.findIndex((s) => s.id === nextId);
     if (debugRef.current) {
-      // eslint-disable-next-line no-console
       console.log('[auto-complete] section change', { prevId, nextId, prevIndex, nextIndex, bottomBeforeChange: true });
     }
     if (prevIndex >= 0 && nextIndex === prevIndex + 1) {
@@ -110,7 +108,6 @@ export function ContentDisplay() {
             justAutoCompletedRef.current.delete(prevId);
           }, 4000);
           if (debugRef.current) {
-            // eslint-disable-next-line no-console
             console.log('[auto-complete] marked completed', { sectionId: prevId });
           }
         } catch {}

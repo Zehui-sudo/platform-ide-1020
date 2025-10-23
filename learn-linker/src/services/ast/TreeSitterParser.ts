@@ -17,7 +17,9 @@ export class TreeSitterParser {
    * 初始化解析器
    */
   async initialize(): Promise<void> {
-    if (this.initialized) return;
+    if (this.initialized) {
+      return;
+    }
     
     if (!this.initPromise) {
       this.initPromise = this.doInitialize();
@@ -360,7 +362,9 @@ export class TreeSitterParser {
       path.resolve(__dirname, '..', '..', 'node_modules', 'web-tree-sitter', 'tree-sitter.wasm')
     ];
     for (const p of candidates) {
-      if (fs.existsSync(p)) return p;
+      if (fs.existsSync(p)) {
+        return p;
+      }
     }
     console.error('tree-sitter runtime wasm not found. Tried:\n' + candidates.join('\n'));
     throw new Error('tree-sitter.wasm not found. Please place it under resources/wasm.');
@@ -377,7 +381,9 @@ export class TreeSitterParser {
       path.join(root, 'node_modules', fileName.startsWith('tree-sitter-') ? fileName.replace('.wasm', '') : '', fileName)
     ];
     for (const p of candidates) {
-      if (p && fs.existsSync(p)) return p;
+      if (p && fs.existsSync(p)) {
+        return p;
+      }
     }
     return null;
   }

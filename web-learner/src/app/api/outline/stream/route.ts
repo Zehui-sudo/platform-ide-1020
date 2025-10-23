@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { attachSSE, broadcast, getJob, snapshot } from '@/server/pipeline/jobManager';
+import { attachSSE, getJob, snapshot } from '@/server/pipeline/jobManager';
 
 export const runtime = 'nodejs';
 
@@ -41,4 +41,3 @@ export async function GET(req: NextRequest) {
     },
   });
 }
-

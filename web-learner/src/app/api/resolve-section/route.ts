@@ -53,7 +53,8 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json({ error: 'Section markdown not found' }, { status: 404 });
-  } catch (_e) {
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

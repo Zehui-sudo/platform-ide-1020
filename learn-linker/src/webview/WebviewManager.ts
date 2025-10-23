@@ -94,7 +94,9 @@ export class WebviewManager {
                             // Hardcoded base URL for platform deep links (no user config required)
                             const baseUrl = 'http://localhost:3000';
                             const toAbs = (u: string): string => {
-                                if (/^https?:\/\//i.test(u)) return u;
+                                if (/^https?:\/\//i.test(u)) {
+                                    return u;
+                                }
                                 const prefix = baseUrl.replace(/\/$/, '');
                                 const suffix = u.startsWith('/') ? u : `/${u}`;
                                 return `${prefix}${suffix}`;
@@ -191,7 +193,9 @@ export class WebviewManager {
                     if (data && data.ok && Array.isArray(data.matches)) {
                         // Convert relative URLs from API (like "/learn?...") to absolute using baseUrl
                         const toAbs = (u: string): string => {
-                            if (/^https?:\/\//i.test(u)) return u;
+                            if (/^https?:\/\//i.test(u)) {
+                                return u;
+                            }
                             const prefix = baseUrl.replace(/\/$/, '');
                             const suffix = u.startsWith('/') ? u : `/${u}`;
                             return `${prefix}${suffix}`;

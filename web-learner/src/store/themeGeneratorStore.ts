@@ -4,6 +4,76 @@ import { useLearningStore } from '@/store/learningStore';
 
 type StageStatus = 'pending' | 'running' | 'completed' | 'error';
 
+interface OutlineSectionSummary {
+  id?: string;
+  title?: string;
+}
+
+interface OutlineGroupSummary {
+  id?: string;
+  title?: string;
+  sections?: OutlineSectionSummary[];
+}
+
+interface ReconstructedOutline {
+  title?: string;
+  groups?: OutlineGroupSummary[];
+  chapters?: OutlineGroupSummary[];
+  sections?: OutlineSectionSummary[];
+  meta?: {
+    topic_slug?: string;
+  };
+}
+
+interface OutlineResultPayload {
+  reconstructed_outline?: ReconstructedOutline | null;
+  subject_slug?: string;
+}
+
+interface ContentResultPayload {
+  reportPath?: string | null;
+  publishedFiles?: string[] | null;
+  status?: string;
+  subject?: string;
+  logPath?: string | null;
+  publishDir?: string | null;
+}
+
+interface JobStartResponse {
+  jobId: string;
+}
+
+const countSections = (groups?: OutlineGroupSummary[] | null): number => {
+  if (!Array.isArray(groups)) {
+    return 0;
+  }
+
+  return groups.reduce((accumulator, group) => {
+    const sectionCount = Array.isArray(group?.sections) ? group.sections.length : 0;
+    return accumulator + sectionCount;
+  }, 0);
+};
+
+const estimateSectionTotal = (outline: ReconstructedOutline | null | undefined): number => {
+  if (!outline) {
+    return 0;
+  }
+
+  if (Array.isArray(outline.groups) && outline.groups.length > 0) {
+    return countSections(outline.groups);
+  }
+
+  if (Array.isArray(outline.chapters) && outline.chapters.length > 0) {
+    return countSections(outline.chapters);
+  }
+
+  if (Array.isArray(outline.sections)) {
+    return outline.sections.length;
+  }
+
+  return 0;
+};
+
 interface StageState {
   status: StageStatus;
   detail?: string;
@@ -22,8 +92,8 @@ interface ThemeGeneratorState {
   // Job and results
   jobId: string | null;
   contentJobId: string | null;
-  outlineResult: any | null;
-  contentResult: any | null;
+  outlineResult: OutlineResultPayload | null;
+  contentResult: ContentResultPayload | null;
   // Estimated totals for progress tracking
   contentTotal: number | null;
   contentSaved: number | null;
@@ -95,7 +165,14 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
         outlineEvtSrc = es;
         
         es.addEventListener('log', (ev: MessageEvent) => {
-          const line = (() => { try { const obj = JSON.parse((ev as any).data); return obj?.line ?? String((ev as any).data); } catch { return String((ev as any).data); }})();
+          const rawData = typeof ev.data === 'string' ? ev.data : JSON.stringify(ev.data);
+          let line = rawData;
+          try {
+            const parsed = JSON.parse(rawData) as { line?: string };
+            line = parsed.line ?? rawData;
+          } catch {
+            // Keep raw string when parsing fails.
+          }
           set((state) => ({ logs: [...state.logs.slice(-500), line] }));
         });
         
@@ -127,7 +204,7 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
           if (data?.status === 'success') {
             const r = await fetch(`/api/outline/result?jobId=${encodeURIComponent(jobId)}`, { cache: 'no-store' });
             if (r.ok) {
-              const result = await r.json();
+              const result = (await r.json()) as OutlineResultPayload;
               set({ outlineResult: result, stage: 'outline_ready', isSubscribing: false });
             } else {
               set({ stage: 'idle', isSubscribing: false });
@@ -172,7 +249,7 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
           });
 
           if (!res.ok) throw new Error(`Failed to start job: ${res.status}`);
-          const { jobId } = await res.json();
+          const { jobId } = (await res.json()) as JobStartResponse;
           set({ jobId });
           get().subscribeToOutline(jobId);
         } catch (error) {
@@ -233,8 +310,15 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
         });
         
         es.addEventListener('log', (ev: MessageEvent) => {
-            const line = (() => { try { const obj = JSON.parse(ev.data); return obj?.line ?? String(ev.data); } catch { return String(ev.data); }})();
-            set(prev => ({ logs: [...prev.logs.slice(-500), line] }));
+            const rawData = typeof ev.data === 'string' ? ev.data : JSON.stringify(ev.data);
+            let line = rawData;
+            try {
+              const parsed = JSON.parse(rawData) as { line?: string };
+              line = parsed.line ?? rawData;
+            } catch {
+              // Keep raw string
+            }
+            set((prev) => ({ logs: [...prev.logs.slice(-500), line] }));
         });
 
         es.addEventListener('end', async (ev: MessageEvent) => {
@@ -244,7 +328,7 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
             if (data?.status === 'success') {
                 const r = await fetch(`/api/content/result?jobId=${encodeURIComponent(jobId)}`, { cache: 'no-store' });
                 if (r.ok) {
-                    const result = await r.json();
+                    const result = (await r.json()) as ContentResultPayload;
                     set({ contentResult: result, stage: 'content_ready', isSubscribing: false });
                 } else {
                     set({ stage: 'outline_ready', isSubscribing: false });
@@ -265,17 +349,8 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
         if (!jobId) return;
 
         // Estimate total points from outline sections
-        const outline = outlineResult?.reconstructed_outline || null;
-        let total = 0;
-        if (outline) {
-          if (Array.isArray(outline.groups)) {
-            total = outline.groups.reduce((acc: number, g: any) => acc + (Array.isArray(g?.sections) ? g.sections.length : 0), 0);
-          } else if (Array.isArray(outline.chapters)) {
-            total = outline.chapters.reduce((acc: number, c: any) => acc + (Array.isArray(c?.sections) ? c.sections.length : 0), 0);
-          } else if (Array.isArray(outline.sections)) {
-            total = outline.sections.length;
-          }
-        }
+        const outline = outlineResult?.reconstructed_outline ?? null;
+        const total = estimateSectionTotal(outline);
 
         set({
           stage: 'generating_content',
@@ -294,7 +369,7 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
           });
 
           if (!res.ok) throw new Error(`Failed to start content generation: ${res.status}`);
-          const { jobId: cJobId } = await res.json();
+          const { jobId: cJobId } = (await res.json()) as JobStartResponse;
           set({ contentJobId: cJobId });
           get().subscribeToContent(cJobId);
         } catch (error) {
@@ -383,7 +458,7 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
         Object.fromEntries(
           Object.entries(state).filter(([key]) => !['logs', 'showLogs', 'isSubscribing', 'collectStage', 'outlineStage', 'contentStage', 'uiOpen'].includes(key))
         ),
-      onRehydrateStorage: (state) => {
+      onRehydrateStorage: () => {
         return (draft, error) => {
           if (error) console.error('Failed to rehydrate theme generator state', error);
           if (draft) {

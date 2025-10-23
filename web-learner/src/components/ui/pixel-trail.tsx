@@ -5,6 +5,8 @@ import { motion, useAnimationControls } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useDimensions } from "@/hooks/use-debounced-dimensions";
 
+type AnimatedPixelElement = HTMLDivElement & { __animatePixel?: () => void };
+
 interface PixelTrailProps {
   pixelSize?: number;
   fadeDuration?: number; // ms
@@ -26,8 +28,8 @@ export function PixelTrail({
 }: PixelTrailProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const idPrefixRef = useRef<string>(
-    typeof crypto !== "undefined" && (crypto as any).randomUUID
-      ? (crypto as any).randomUUID()
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
       : Math.random().toString(36).slice(2)
   );
 
@@ -55,10 +57,12 @@ export function PixelTrail({
           const nx = x + dx;
           const ny = y + dy;
           if (nx < 0 || ny < 0 || nx >= columns || ny >= rows) continue;
-          const el = document.getElementById(`${idPrefixRef.current}-pixel-${nx}-${ny}`);
+          const el = document.getElementById(`${idPrefixRef.current}-pixel-${nx}-${ny}`) as AnimatedPixelElement | null;
           if (!el) continue;
-          const animatePixel = (el as any).__animatePixel as undefined | (() => void);
-          if (animatePixel) animatePixel();
+          const animatePixel = el.__animatePixel;
+          if (animatePixel) {
+            animatePixel();
+          }
         }
       }
     },
@@ -68,7 +72,7 @@ export function PixelTrail({
   useEffect(() => {
     const handler = (e: MouseEvent) => animateAt(e.clientX, e.clientY);
     window.addEventListener("mousemove", handler, { passive: true });
-    return () => window.removeEventListener("mousemove", handler as any);
+    return () => window.removeEventListener("mousemove", handler);
   }, [animateAt]);
 
   return (
@@ -118,7 +122,9 @@ const PixelDot: React.FC<PixelDotProps> = React.memo(
     }, [controls, fadeDuration, delay]);
 
     const ref = useCallback((node: HTMLDivElement | null) => {
-      if (node) (node as any).__animatePixel = animatePixel;
+      if (node) {
+        (node as AnimatedPixelElement).__animatePixel = animatePixel;
+      }
     }, [animatePixel]);
 
     return (

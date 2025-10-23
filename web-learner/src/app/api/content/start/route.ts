@@ -10,6 +10,9 @@ function repoRoot(): string {
   return path.resolve(process.cwd(), '..');
 }
 
+const toErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -37,13 +40,13 @@ export async function POST(req: NextRequest) {
     try {
       const st = await fs.stat(inputPath);
       if (!st.isFile()) throw new Error('not a file');
-    } catch (e) {
+    } catch {
       return NextResponse.json({ error: `找不到集成大纲文件: ${inputPath}` }, { status: 400 });
     }
 
     const job = await startChapters({ inputPath, selectedChapters, debug });
     return NextResponse.json({ jobId: job.id });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: toErrorMessage(error) }, { status: 500 });
   }
 }

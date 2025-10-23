@@ -275,8 +275,12 @@ export class FeatureExtractor {
       '.reduce', 'Object.defineProperty'
     ];
     
-    if (basicApis.some(b => api.includes(b))) return 'basic';
-    if (advancedApis.some(a => api.includes(a))) return 'advanced';
+    if (basicApis.some(b => api.includes(b))) {
+      return 'basic';
+    }
+    if (advancedApis.some(a => api.includes(a))) {
+      return 'advanced';
+    }
     return 'intermediate';
   }
 
@@ -294,8 +298,12 @@ export class FeatureExtractor {
       'destructuring', 'template-literal'
     ];
     
-    if (advancedPatterns.includes(pattern)) return 'advanced';
-    if (intermediatePatterns.includes(pattern)) return 'intermediate';
+    if (advancedPatterns.includes(pattern)) {
+      return 'advanced';
+    }
+    if (intermediatePatterns.includes(pattern)) {
+      return 'intermediate';
+    }
     return 'basic';
   }
 }

@@ -3,6 +3,9 @@ import { getJob, finishJob, broadcast } from '@/server/pipeline/jobManager';
 
 export const runtime = 'nodejs';
 
+const toErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -12,17 +15,20 @@ export async function POST(req: NextRequest) {
 
     try {
       if (job.pid) {
-        try { process.kill(job.pid, 'SIGTERM'); } catch {}
+        try {
+          process.kill(job.pid, 'SIGTERM');
+        } catch {
+          // Ignore process termination failures; process may already be gone.
+        }
       }
       finishJob(job.id, 'cancelled');
       broadcast(job, 'end', { status: 'cancelled' });
-    } catch (e: any) {
-      return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });
+    } catch (innerError: unknown) {
+      return NextResponse.json({ error: toErrorMessage(innerError) }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: toErrorMessage(error) }, { status: 500 });
   }
 }
-

@@ -11,10 +11,12 @@ export interface StageState {
   detail?: string;
 }
 
+export type JobEventData = unknown;
+
 export interface SSEClient {
   id: string;
   controller: ReadableStreamDefaultController<Uint8Array>;
-  send: (event: string, data: any) => void;
+  send: (event: string, data: JobEventData) => void;
   close: () => void;
 }
 
@@ -38,11 +40,15 @@ export interface JobRecord {
 }
 
 // 使用全局 Map 跨路由/模块持久（Dev/HMR 下也尽量复用）
-const g = globalThis as any;
-if (!g.__PIPELINE_JOBS__) {
-  g.__PIPELINE_JOBS__ = new Map<string, JobRecord>();
+type PipelineGlobal = typeof globalThis & {
+  __PIPELINE_JOBS__?: Map<string, JobRecord>;
+};
+
+const pipelineGlobal = globalThis as PipelineGlobal;
+if (!pipelineGlobal.__PIPELINE_JOBS__) {
+  pipelineGlobal.__PIPELINE_JOBS__ = new Map<string, JobRecord>();
 }
-const jobs: Map<string, JobRecord> = g.__PIPELINE_JOBS__;
+const jobs: Map<string, JobRecord> = pipelineGlobal.__PIPELINE_JOBS__;
 
 function makeId(prefix = 'job'): string {
   const rnd = Math.random().toString(36).slice(2, 8);
@@ -89,7 +95,7 @@ export function attachSSE(job: JobRecord, controller: ReadableStreamDefaultContr
   const client: SSEClient = {
     id: makeId('client'),
     controller,
-    send: (event: string, data: any) => {
+    send: (event: string, data: JobEventData) => {
       try {
         const payload = typeof data === 'string' ? data : JSON.stringify(data);
         controller.enqueue(encoder.encode(`event: ${event}\n`));
@@ -104,7 +110,7 @@ export function attachSSE(job: JobRecord, controller: ReadableStreamDefaultContr
   return client;
 }
 
-export function broadcast(job: JobRecord, event: string, data: any) {
+export function broadcast(job: JobRecord, event: string, data: JobEventData) {
   for (const sub of job.subscribers) {
     try { sub.send(event, data); } catch {}
   }

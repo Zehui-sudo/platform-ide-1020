@@ -34,7 +34,9 @@ export class UnifiedAstAnalyzer {
    * 初始化分析器
    */
   async initialize(): Promise<void> {
-    if (this.initialized) return;
+    if (this.initialized) {
+      return;
+    }
     
     try {
       await this.parser.initialize();

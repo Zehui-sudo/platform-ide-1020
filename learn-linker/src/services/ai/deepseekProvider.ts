@@ -93,7 +93,9 @@ export class DeepSeekProvider implements IAiService {
                 }
                 
                 const { done, value } = await reader.read();
-                if (done) break;
+                if (done) {
+                    break;
+                }
 
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
