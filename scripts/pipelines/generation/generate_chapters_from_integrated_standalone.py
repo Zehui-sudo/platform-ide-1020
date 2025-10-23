@@ -16,7 +16,7 @@
     --input output/integrated_pipeline/computer-network-principles-integrated-20251022-204538.json \
     --config config.json \
     --skip-content-review \
-    --selected-chapters 1,2 \
+    --selected-chapters 1 \
     --debug
 
 调试模式：
@@ -164,12 +164,16 @@ class WorkState(TypedDict, total=False):
 from scripts.common.llm import build_llm_registry, select_llm_for_node, pick_llm, AsyncLLM as _AsyncLLM
 
 
-def _prompt_from_catalog(key: str, default_text: str) -> str:
+def _prompt_from_catalog(key: str) -> str:
     try:
         from prompts.prompt_loader import get_prompt
-        return get_prompt(key, default_text)
-    except Exception:
-        return default_text
+    except Exception as exc:
+        raise RuntimeError("无法导入 prompts.prompt_loader，请确认 prompts 目录可用。") from exc
+
+    try:
+        return get_prompt(key)
+    except Exception as exc:
+        raise RuntimeError(f"无法从 prompts/prompt_catalog.md 加载 Prompt '{key}': {exc}") from exc
 
 
 # ----------------------------
@@ -231,62 +235,52 @@ def _build_contextual_content_prompt(
     prior_context: str = "",
 ) -> str:
     lang = (language or "zh").strip().lower()
-    role = _prompt_from_catalog(
-        "gen.role",
-        "你是一位世界级的教育家与作家，以其能将复杂、抽象的理论知识变得浅显易懂、引人入胜而闻名。你的天赋在于不仅仅是解释，更是去启发，将错综复杂的概念编织成一个引人入胜的叙事，从而促进读者形成深刻且持久的理解。",
-    )
-    head = f"# 课程内容生成任务\n\n{role}\n"
-    if path:
-        head += f"\n【定位】{path}\n"
-
-    goal_part = f"\n【教学目标】{primary_goal}\n" if primary_goal else "\n【教学目标】围绕当前知识点展开，高质量解释并给出必要示例。\n"
-    mods = suggested_modules or []
+    template = _prompt_from_catalog("gen.theory_content")
+    path_block = f"【定位】{path}\n\n" if path else ""
+    goal_text = primary_goal if primary_goal else "围绕当前知识点展开，高质量解释并给出必要示例。"
+    goal_block = f"【教学目标】{goal_text}\n\n"
+    mods = [m for m in (suggested_modules or []) if isinstance(m, str)]
     if mods:
-        mods_part = "\n【建议内容模块】" + ", ".join(mods) + "\n"
+        modules_block = f"【建议内容模块】{', '.join(mods)}\n\n"
     else:
-        mods_part = "\n【建议内容模块】summary, code_example（如适合）, common_mistake_warning（如有）, diagram（如有因果/流程）\n"
-
+        modules_block = "【建议内容模块】summary, code_example（如适合）, common_mistake_warning（如有）, diagram（如有因果/流程）\n\n"
     conts = [c for c in (suggested_contents or []) if isinstance(c, str)]
-    conts_part = "\n【核心内容】" + ", ".join(conts) + "\n" if conts else "\n"
-
-    style_part = _prompt_from_catalog(
-        "gen.style",
-        """
-【写作风格与深度要求】
-- **类比与具象化**：对于抽象的核心概念，请使用读者生活中可能熟悉的现象或经验进行类比，帮助他们建立直观感受。**重要：确保类比在简化概念的同时，不会牺牲关键的技术精确性。**
-- **背景与叙事**：对于任何一个基础理论、原则或关键思想，请深入挖掘其提出的背景。解释它试图解决什么问题？在此之前的主流观点是什么？它的出现带来了哪些关键性的影响？**对于技术性强的学科，这意味着清晰地阐述其“问题-解决方案-影响”的逻辑链条，而非文学性描述。**
-- **启发性结尾**：在文章末尾，除了总结要点，还应提出一些发人深省的问题，或一个能承上启下的前瞻性观点，以激发读者的好奇心和进一步探索的欲望。
-- **篇幅指导**：为确保内容的深度，每一篇知识点都应被充分地探讨。请力求内容详尽，目标篇幅在 **2500-3500字** 左右。请优先考虑内容的深度与清晰度，而非简洁。
-""",
-    )
+    contents_block = f"【核心内容】{', '.join(conts)}\n\n" if conts else ""
 
     if structure_type == "pipeline":
-        ctx_part = (f"\n【已完成的小节内容（Context）】\n> " + prior_context.replace("\n", "\n> ") + "\n") if prior_context else "\n"
-        task = (
-            f"\n【你的任务】请严格遵循【写作风格与深度要求】，紧接上述内容，围绕“{section_title}”自然过渡并续写下一段。请以【核心内容】为基础，进行详尽地展开与阐述，确保讲解不仅系统、逻辑清晰，而且内容丰富、细节饱满、富有启发性。\n"
+        if prior_context:
+            quoted = prior_context.replace("\n", "\n> ")
+            context_block = f"【已完成的小节内容（Context）】\n> {quoted}\n\n"
+        else:
+            context_block = ""
+        task_block = (
+            f"【你的任务】请严格遵循【写作风格与深度要求】，紧接上述内容，围绕“{section_title}”自然过渡并续写下一段。请以【核心内容】为基础，进行详尽地展开与阐述，确保讲解不仅系统、逻辑清晰，而且内容丰富、细节饱满、富有启发性。\n\n"
         )
     else:
-        dep = relation_to_previous.strip().lower()
+        dep = (relation_to_previous or "").strip().lower()
         if prior_context and dep in {"builds_on", "deep_dive_into"}:
-            ctx_part = f"\n【父级知识点（Parent Context）】\n> " + prior_context.replace("\n", "\n> ") + "\n"
+            quoted = prior_context.replace("\n", "\n> ")
+            instruction = (
+                "请在父级基础上深入讲解当前知识点，突出内在联系与扩展。"
+                if dep == "deep_dive_into"
+                else "请在父级基础上推进当前知识点，说明改进或新增能力。"
+            )
+            context_block = f"【父级知识点（Parent Context）】\n> {quoted}\n\n{instruction}\n\n"
         else:
-            ctx_part = "\n"
-        task = f"\n【你的任务】请严格遵循【写作风格与深度要求】，撰写一篇关于“{section_title}”的独立教学段落。请以【核心内容】为基础，进行详尽地展开与阐述，确保讲解不仅系统、逻辑清晰，而且内容丰富、细节饱满、富有启发性。\n"
+            context_block = ""
+        task_block = (
+            f"【你的任务】请严格遵循【写作风格与深度要求】，撰写一篇关于“{section_title}”的独立教学段落。请以【核心内容】为基础，进行详尽地展开与阐述，确保讲解不仅系统、逻辑清晰，而且内容丰富、细节饱满、富有启发性。\n\n"
+        )
 
-    constraints = _prompt_from_catalog(
-        "gen.constraints",
-        """
-【输出约束】
-- 使用 Markdown；结构清晰，标题层级合理；
-- 叙事连贯：避免与已给上下文重复；必要时用一句话承接；
-- 如引用数学/图表/流程，请使用适当的模块；
-- 如 Markdown 中涉及代码示例，请用代码块进行声明包裹；
-- 表格中不要出现代码格式的内容；
-- 结尾含简短总结或要点回顾。
-""",
+    prompt = template.format(
+        path_block=path_block,
+        goal_block=goal_block,
+        modules_block=modules_block,
+        contents_block=contents_block,
+        context_block=context_block,
+        task_block=task_block,
     )
-    lang_line = f"\n【语言】{'中文' if lang.startswith('zh') else 'English'}\n"
-    return head + goal_part + mods_part + conts_part + style_part + ctx_part + task + constraints + lang_line
+    return prompt.strip() + "\n"
 
 
 def _build_theory_opening_prompt(
@@ -302,13 +296,8 @@ def _build_theory_opening_prompt(
     all_chapters_struct: List[Dict[str, Any]],
 ) -> str:
     lang = (language or "zh").strip().lower()
-    role = _prompt_from_catalog(
-        "gen.role",
-        "你是一位世界级的教育家与作家，以其能将复杂、抽象的理论知识变得浅显易懂、引人入胜而闻名。你的天赋在于不仅仅是解释，更是去启发，将错综复杂的概念编织成一个引人入胜的叙事，从而促进读者形成深刻且持久的理解。",
-    )
-    head = f"# 课程内容生成任务\n\n{role}\n"
-    if path:
-        head += f"\n【定位】{path}\n"
+    template = _prompt_from_catalog("gen.theory_content")
+    path_block = f"【定位】{path}\n\n" if path else ""
 
     context_str = ""
     if current_chapter_index > 1 and all_chapters_struct:
@@ -331,67 +320,41 @@ def _build_theory_opening_prompt(
                         prev_chapter_detail_lines.append(f"- {sec_title}")
         context_str = "\n".join(global_overview_lines) + "\n" + "\n".join(prev_chapter_detail_lines)
 
-    goal_part = f"\n【教学目标】{primary_goal}\n" if primary_goal else "\n【教学目标】围绕当前知识点展开，高质量解释并给出必要示例。\n"
-    mods = suggested_modules or []
+    context_block = f"{context_str}\n\n" if context_str else ""
+    goal_text = primary_goal if primary_goal else "围绕当前知识点展开，高质量解释并给出必要示例。"
+    goal_block = f"【教学目标】{goal_text}\n\n"
+    mods = [m for m in (suggested_modules or []) if isinstance(m, str)]
     if mods:
-        mods_part = "\n【建议内容模块】" + ", ".join(mods) + "\n"
+        modules_block = f"【建议内容模块】{', '.join(mods)}\n\n"
     else:
-        mods_part = "\n【建议内容模块】summary, code_example（如适合）, common_mistake_warning（如有）, diagram（如有因果/流程）\n"
+        modules_block = "【建议内容模块】summary, code_example（如适合）, common_mistake_warning（如有）, diagram（如有因果/流程）\n\n"
 
     conts = [c for c in (suggested_contents or []) if isinstance(c, str)]
-    conts_part = "\n【核心内容】" + ", ".join(conts) + "\n" if conts else "\n"
-
-    style_part = """
-【写作风格与深度要求】
-- **类比与具象化**：对于抽象的核心概念，请使用读者生活中可能熟悉的现象或经验进行类比，帮助他们建立直观感受。**重要：确保类比在简化概念的同时，不会牺牲关键的技术精确性。**
-- **背景与叙事**：对于任何一个基础理论、原则或关键思想，请深入挖掘其提出的背景。解释它试图解决什么问题？在此之前的主流观点是什么？它的出现带来了哪些关键性的影响？**对于技术性强的学科，这意味着清晰地阐述其“问题-解决方案-影响”的逻辑链条，而非文学性描述。**
-- **启发性结尾**：在文章末尾，除了总结要点，还应提出一些发人深省的问题，或一个能承上启下的前瞻性观点，以激发读者的好奇心和进一步探索的欲望。
-- **篇幅指导**：为确保内容的深度，每一篇知识点都应被充分地探讨。请力求内容详尽，目标篇幅在 **2500-3500字** 左右。请优先考虑内容的深度与清晰度，而非简洁。
-"""
+    contents_block = f"【核心内容】{', '.join(conts)}\n\n" if conts else ""
 
     if current_chapter_index == 1:
-        task = (
-            f"\n【你的任务】请严格遵循【写作风格与深度要求】，作为一名该领域的专家，围绕“{section_title}”这个主题，撰写整个课程的开篇内容。"
-            f"请以【核心内容】为基础，进行详尽地展开与阐述，确保讲解不仅系统、逻辑清晰，而且内容丰富、细节饱满、富有启发性，并为后续所有章节的学习做好铺垫。\n"
+        task_block = (
+            f"【你的任务】请严格遵循【写作风格与深度要求】，作为一名该领域的专家，围绕“{section_title}”这个主题，撰写整个课程的开篇内容。"
+            f"请以【核心内容】为基础，进行详尽地展开与阐述，确保讲解不仅系统、逻辑清晰，而且内容丰富、细节饱满、富有启发性，并为后续所有章节的学习做好铺垫。\n\n"
         )
     else:
-        task = (
-            f"\n【你的任务】请严格遵循【写作风格与深度要求】，作为一名该领域的专家，参考【全局目录概览】和【前文章节详解】。现在，请开启一个全新的章节，围绕“{section_title}”这一主题撰写开篇内容。"
-            f"请以【核心内容】为基础，进行详尽地展开与阐述，确保讲解不仅系统、逻辑清晰，而且内容丰富、细节饱满、富有启发性，并为本章后续内容的学习做好铺垫。\n"
+        task_block = (
+            f"【你的任务】请严格遵循【写作风格与深度要求】，作为一名该领域的专家，参考【全局目录概览】和【前文章节详解】。现在，请开启一个全新的章节，围绕“{section_title}”这一主题撰写开篇内容。"
+            f"请以【核心内容】为基础，进行详尽地展开与阐述，确保讲解不仅系统、逻辑清晰，而且内容丰富、细节饱满、富有启发性，并为本章后续内容的学习做好铺垫。\n\n"
         )
 
-    constraints = _prompt_from_catalog(
-        "gen.constraints",
-        """
-【输出约束】
-- 使用 Markdown；结构清晰，标题层级合理；
-- 叙事连贯：避免与已给上下文重复；必要时用一句话承接；
-- 如引用数学/图表/流程，请使用适当的模块；
-- 如 Markdown 中涉及代码示例，请用代码块进行声明包裹；
-- 表格中不要出现代码格式的内容；
-- 结尾含简短总结或要点回顾。
-""",
+
+    prompt = template.format(
+        path_block=path_block,
+        context_block=context_block,
+        goal_block=goal_block,
+        modules_block=modules_block,
+        contents_block=contents_block,
+        task_block=task_block
     )
-    lang_line = f"\n【语言】{'中文' if lang.startswith('zh') else 'English'}\n"
-    return head + (context_str + "\n" if context_str else "") + goal_part + mods_part + conts_part + style_part + task + constraints + lang_line
+    return prompt.strip() + "\n"
 
 
-
-# ----------------------------
-# 工具型主题 Prompt（Prompt 2）
-# ----------------------------
-
-PROMPT_CLASSIFY_SUBJECT = r"""
-You are a curriculum designer's assistant. Your task is to classify a given subject into one of two categories: "theory" or "tool".
-
-Category Definitions:
-* Theory: a field of knowledge, a discipline, or a conceptual framework focused on principles and the "why".
-* Tool: a specific language, library, framework, or technology focused on the "how-to".
-
-Task: Classify the following subject. Respond with a single word: theory or tool.
-
-Subject: "[subject]"
-"""
 
 
 def _build_tool_content_prompt(
@@ -408,15 +371,9 @@ def _build_tool_content_prompt(
     prior_context: str = "",
 ) -> str:
     lang = (language or "zh").strip().lower()
+    template = _prompt_from_catalog("gen.tool_content")
     mods = [m for m in (suggested_modules or []) if isinstance(m, str)]
     conts = [c for c in (suggested_contents or []) if isinstance(c, str)]
-    role = f"你是一位世界级的技术教育者和 {topic} 专家。"
-    header = [
-        role,
-        "你的任务是接收一份由“总建筑师”设计的“教学设计图”（一个JSON对象），并依据这份设计图，将其中描述的知识点，转化为一篇高质量、多层次、结构清晰的Markdown教程。",
-    ]
-    if path:
-        header.append(f"【定位】{path}")
     design_obj = {
         "title": section_title,
         "id": "point",
@@ -424,101 +381,47 @@ def _build_tool_content_prompt(
         "suggested_modules": mods,
         "suggested_contents": conts,
     }
-    ctx = ""
+    path_block = f"【定位】{path}\n\n" if path else ""
+
     if structure_type == "pipeline":
         if prior_context:
-            ctx = "\n".join([
-                "【已完成的小节内容】",
-                "> " + (prior_context or "").replace("\n", "\n> "),
-                "",
-                "请在不重复以上内容的前提下，自然过渡并续写本节。",
-            ])
+            quoted = (prior_context or "").replace("\n", "\n> ")
+            context_block = (
+                "【已完成的小节内容】\n"
+                f"> {quoted}\n\n"
+                "请在不重复以上内容的前提下，自然过渡并续写本节。\n\n"
+            )
+        else:
+            context_block = ""
     else:
         dep = (relation_to_previous or "").strip().lower()
         if prior_context and dep in {"builds_on", "deep_dive_into"}:
-            ctx = "\n".join([
-                "【父级知识点（Parent Context）】",
-                "> " + (prior_context or "").replace("\n", "\n> "),
-                "",
-                ("请在父级基础上深入讲解当前知识点，突出内在联系与扩展。" if dep == "deep_dive_into" else "请在父级基础上推进当前知识点，说明改进或新增能力。"),
-            ])
-    sections = [
-"""
-### 🎯 核心概念
-用一句话说明这个知识点解决什么问题，为什么需要它。语言要精炼，直击要害。
+            quoted = (prior_context or "").replace("\n", "\n> ")
+            instruction = (
+                "请在父级基础上深入讲解当前知识点，突出内在联系与扩展。"
+                if dep == "deep_dive_into"
+                else "请在父级基础上推进当前知识点，说明改进或新增能力。"
+            )
+            context_block = (
+                "【父级知识点（Parent Context）】\n"
+                f"> {quoted}\n\n"
+                f"{instruction}\n\n"
+            )
+        else:
+            context_block = ""
 
-### 💡 使用方式
-介绍这个知识点的具体使用方式
-
-### 📚 Level 1: 基础认知（30秒理解）
-提供一个最简单、最直观的代码示例，让初学者一眼就能明白基本用法。代码必须完整可运行，并以注释的形式包含预期输出结果。
-```python
-# 示例代码
-```
-
-### 📈 Level 2: 核心特性（深入理解）
-展示2-3个该知识点的关键特性或高级用法，每个特性配一个完整的代码示例和简要说明。
-
-#### 特性1: [特性名称]
-(简要说明)
-```python
-# 示例代码
-```
-
-#### 特性2: [特性名称]
-(简要说明)
-```python
-# 示例代码
-```
-
-### 🔍 Level 3: 对比学习（避免陷阱）
-通过对比“错误用法”和“正确用法”来展示常见的陷阱或易混淆的概念。每个用法都必须有完整的代码示例和清晰的解释。
-
-```python
-# === 错误用法 ===
-# ❌ 展示常见错误
-# 解释为什么是错的
-
-# === 正确用法 ===
-# ✅ 展示正确做法
-# 解释为什么这样是对的
-```
-
-### 🚀 Level 4: 实战应用（真实场景）
-设计一个生动有趣的实战场景来综合运用该知识点。场景要富有创意，例如游戏、科幻、生活趣事等，避免枯燥的纯理论或商业案例。代码需完整，并有清晰的输出结果。
-
-**场景：** [选择一个有趣的场景，如：🎮 游戏角色属性计算器, 🚀 星际飞船导航系统, 🍕 披萨订单处理器, 🐾 虚拟宠物互动等]
-
-```python
-# 实战场景的完整代码
-```
-
-### 💡 记忆要点
-- **要点1**: [总结第一个关键记忆点]
-- **要点2**: [总结第二个关键记忆点]
-- **要点3**: [总结第三个关键记忆点]
-"""
-    ]
-    constraints = [
-        "【输出要求】",
-        "- **循序渐进**: 从最简单的概念到复杂的应用。"
-        "- **重点突出**: 使用加粗、列表等方式突出核心知识。"
-        "- **生动有趣**: Level 4的实战场景要富有想象力，使用Emoji增加趣味性。"
-        "- **代码可运行**: 所有代码块都必须是独立的、完整的、可以直接复制运行的。"
-        "- **中文讲解**: 所有解释和注释都使用中文。"
-    ]
-    prompt = []
-    prompt.extend(header)
-    prompt.append("\n【教学设计图】\n" + json.dumps(design_obj, ensure_ascii=False, indent=2))
-    if ctx:
-        prompt.append("\n" + ctx)
-    prompt.append("\n【请严格按照以下Markdown结构生成内容，确保每个代码块都是完整、可独立运行的】\n" + "\n".join(sections))
-    prompt.append("\n" + "\n".join(constraints))
-    return "\n\n".join(prompt)
+    prompt = template.format(
+        topic=topic,
+        path_block=path_block,
+        design_json=json.dumps(design_obj, ensure_ascii=False, indent=2),
+        context_block=context_block
+    )
+    return prompt.strip() + "\n"
 
 
 async def _classify_subject_async(llm, subject: str) -> str:
-    prompt = PROMPT_CLASSIFY_SUBJECT.replace("[subject]", subject)
+    template = _prompt_from_catalog("gen.classify_subject")
+    prompt = template.format(subject=str(subject or ""))
     try:
         text = await llm.ainvoke(prompt)
         t = (text or "").strip().lower()
@@ -546,41 +449,7 @@ async def _gen_one_point(llm, prompt: str, retries: int, delay: int, debug: bool
 
 
 async def _review_one_point_with_context(llm, point_id: str, content_md: str, peer_points: List[Dict[str, str]], debug: bool = False) -> Dict[str, Any]:
-    review_prompt_template = _prompt_from_catalog('review.default', '''你是资深的技术编辑，你的任务是审查下面的初稿，并以JSON格式提供具体的、可操作的反馈。
-
-【审查维度】
-1. 准确性: 内容与代码是否技术上准确？
-2. 清晰度: 解释是否易懂？示例是否清晰？
-3. 完整性: 是否遗漏关键概念或步骤？
-4. 一致性: 是否与标题及其在课程大纲中的定位相符？
-
-【分类要求（非常重要）】
-对每个问题进行分类，并估计信心度(confidence: 0~1)。分类category仅能取以下值之一：
-- formatting, typo, heading, link_fix, reference, style, redundancy, minor_clarity, minor_structure, example_polish,
-- factual_error, code_bug, algorithm_logic, security, api_breaking_change
-
-【输出格式（仅输出一个JSON对象，无任何额外文本）】
-顶层键：
-- is_perfect: 布尔；若无需任何修改则为 true。
-- issues: 数组；若 is_perfect=true 则为空数组。
-
-每个 issue 必须包含：
-- severity: 'major' | 'minor'
-- category: 上述分类之一
-- confidence: 0~1 之间的小数
-- description: 字符串，问题描述
-- suggestion: 字符串，具体且可执行的修复建议
-
-【上下文】
-[文件ID] {point_id}
-[同章节其他知识点]
-{peers_lines}
-
-【当前内容】
-{content_md}
-
-【你的JSON输出】
-''')
+    review_prompt_template = _prompt_from_catalog('review.default')
     peers_lines = "\n".join([f"- {p.get('id', '')}: {p.get('title', '')}" for p in peer_points])
     prompt = review_prompt_template.format(point_id=point_id, peers_lines=peers_lines if peers_lines else '(无)', content_md=content_md)
     if debug:
@@ -680,25 +549,19 @@ async def _propose_fix(
     user_feedback: str = "",
     debug: bool = False,
 ) -> Dict[str, Any]:
-    constraints = (
-        "请仅输出一个 JSON 对象，不要任何额外文字；键：\n"
-        "- summary: 对需要修改点与改动的简要说明（中文，100-200字）；\n"
-        "- revised_content: 修订后的完整 Markdown 内容（必须是完整替换稿而非片段）；\n"
-        "- risk (可选): 'low'|'medium'|'high'；\n"
-        "- change_categories (可选): 数组，参考审查分类；\n"
-        "- notes (可选): 对修复范围的简短说明。"
-    )
-    feedback_part = f"\n[用户反馈]\n{user_feedback}\n" if user_feedback else ""
-    prior_part = f"\n[上一版修复方案]\n{json.dumps(prior_proposal, ensure_ascii=False)}\n" if prior_proposal else ""
-    prompt = (
-        "你是严谨的技术编辑与作者。基于以下上下文，提出修复提案并给出修订后完整内容。\n\n"
-        f"[主题]\n{topic}\n\n"
-        f"[知识点]\n{point_title} (ID: {point_id})\n\n"
-        f"[大纲]\n{outline_md}\n\n"
-        f"[当前内容]\n{current_md}\n\n"
-        f"[审查结果]\n{json.dumps(review, ensure_ascii=False)}\n"
-        f"{prior_part}{feedback_part}\n"
-        f"{constraints}\n"
+    template = _prompt_from_catalog("gen.fix_proposal")
+    prior_block = ""
+    if prior_proposal:
+        prior_block = f"[上一版修复方案]\n{json.dumps(prior_proposal, ensure_ascii=False)}\n\n"
+    feedback_block = f"[用户反馈]\n{user_feedback}\n\n" if user_feedback else ""
+    prompt = template.format(
+        topic=topic,
+        point_title=point_title,
+        point_id=point_id,
+        outline_md=outline_md,
+        current_md=current_md,
+        review_json=json.dumps(review, ensure_ascii=False),
+        extras_block=f"{prior_block}{feedback_block}",
     )
     if debug:
         logging.getLogger(__name__).debug("\n==== LLM Prompt [propose_fix] BEGIN ====\n%s\n==== LLM Prompt [propose_fix] END ====\n", prompt)
