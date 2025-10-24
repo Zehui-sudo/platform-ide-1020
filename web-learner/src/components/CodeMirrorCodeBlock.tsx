@@ -1,12 +1,14 @@
 'use client';
 
-import React, { memo, useState, useEffect, useRef } from 'react';
+import React, { memo, useState, useEffect, useRef, useMemo } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
 import { html as cmHtml } from '@codemirror/lang-html';
+import { StreamLanguage } from '@codemirror/language';
+import type { StreamParser } from '@codemirror/language';
 import { EditorView, highlightActiveLine, highlightActiveLineGutter, Decoration } from '@codemirror/view';
-import { Compartment, RangeSet, StateEffect, StateField } from '@codemirror/state';
+import { Compartment, RangeSet, StateEffect, StateField, type Extension } from '@codemirror/state';
 import { githubLight, githubDark } from '@uiw/codemirror-theme-github';
 
 // Define effects for search highlighting
@@ -48,11 +50,109 @@ const createDynamicHighlightTheme = (highlightEnabled: boolean) => EditorView.th
   } : {},
 });
 
+type HttpSection = 'requestOrStatus' | 'headers' | 'body';
+type HttpHeaderPart = 'name' | 'colon' | 'value';
+
+interface HttpState {
+  section: HttpSection;
+  headerPart: HttpHeaderPart;
+}
+
+const httpMethods = /^(GET|HEAD|POST|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)\b/;
+const httpVersion = /^HTTP\/\d+(?:\.\d+)?/;
+const httpStatus = /\b\d{3}\b/;
+const httpNumber = /\b\d+(?:\.\d+)?\b/;
+const httpString = /"(?:[^"\\]|\\.)*"/;
+
+const httpStreamParser: StreamParser<HttpState> = {
+  startState() {
+    return {
+      section: 'requestOrStatus',
+      headerPart: 'name',
+    };
+  },
+  token(stream, state) {
+    if (state.section === 'requestOrStatus') {
+      if (stream.match(httpMethods)) {
+        return 'keyword';
+      }
+      if (stream.match(httpVersion)) {
+        return 'atom';
+      }
+      if (stream.match(httpStatus)) {
+        return 'number';
+      }
+
+      stream.next();
+      if (stream.eol()) {
+        state.section = 'headers';
+      }
+      return null;
+    }
+
+    if (state.section === 'headers') {
+      if (stream.sol()) {
+        if (stream.match(/^\s*$/)) {
+          state.section = 'body';
+          return null;
+        }
+        state.headerPart = 'name';
+      }
+
+      if (state.headerPart === 'name') {
+        if (stream.eatSpace()) {
+          return null;
+        }
+        const name = stream.match(/[A-Za-z0-9-]+/);
+        if (name) {
+          if (stream.peek() === ':') {
+            state.headerPart = 'colon';
+            return 'attributeName';
+          }
+          return null;
+        }
+        stream.next();
+        return null;
+      }
+
+      if (state.headerPart === 'colon') {
+        if (stream.match(':')) {
+          state.headerPart = 'value';
+          return 'punctuation';
+        }
+        stream.next();
+        return null;
+      }
+
+      if (state.headerPart === 'value') {
+        stream.skipToEnd();
+        return 'string';
+      }
+    }
+
+    if (state.section === 'body') {
+      if (stream.match(httpString)) {
+        return 'string';
+      }
+      if (stream.match(httpNumber)) {
+        return 'number';
+      }
+      stream.next();
+      return null;
+    }
+
+    stream.next();
+    return null;
+  },
+};
+
+const httpLanguage = StreamLanguage.define(httpStreamParser);
+
 interface CodeMirrorCodeBlockProps {
   value: string;
   onChange?: (value: string) => void;
   onBlur?: (value: string) => void;
-  language: 'javascript' | 'python' | 'jsx' | 'tsx' | 'html';
+  language: 'javascript' | 'python' | 'jsx' | 'tsx' | 'html' | 'json' | 'http';
   readOnly?: boolean;
   className?: string;
   searchTerm?: string;
@@ -82,6 +182,25 @@ export const CodeMirrorCodeBlock = memo(function CodeMirrorCodeBlock({
   const [themeCompartment] = useState(new Compartment());
   const highlightIsOn = useRef(true);
   const viewRef = useRef<EditorView | null>(null);
+
+  const languageExtensions = useMemo<Extension[]>(() => {
+    switch (language) {
+      case 'javascript':
+      case 'jsx':
+      case 'tsx':
+        return [javascript({ jsx: true, typescript: true })];
+      case 'json':
+        return [javascript({ json: true })];
+      case 'python':
+        return [python()];
+      case 'html':
+        return [cmHtml()];
+      case 'http':
+        return [httpLanguage];
+      default:
+        return [];
+    }
+  }, [language]);
 
   // Function to find and highlight search matches
   const highlightSearchMatches = (view: EditorView, searchTerm: string) => {
@@ -165,15 +284,6 @@ export const CodeMirrorCodeBlock = memo(function CodeMirrorCodeBlock({
     }
   }, [value, enableSearch, searchTerm]);
 
-  let languageExtension;
-  if (language === 'javascript' || language === 'jsx' || language === 'tsx') {
-    languageExtension = javascript({ jsx: true, typescript: true });
-  } else if (language === 'html') {
-    languageExtension = cmHtml();
-  } else {
-    languageExtension = python();
-  }
-
   // Base theme depending on transparency
   const baseTheme = EditorView.theme({
     '&': {
@@ -207,7 +317,7 @@ export const CodeMirrorCodeBlock = memo(function CodeMirrorCodeBlock({
             '.cm-content': { fontSize: `${fontSize}px` },
             '.cm-gutters': { fontSize: `${fontSize}px` },
           }),
-          languageExtension,
+          ...languageExtensions,
           EditorView.lineWrapping,
           searchHighlightField,
           highlightCompartment.of([highlightActiveLine(), highlightActiveLineGutter()]),

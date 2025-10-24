@@ -18,11 +18,14 @@ export function ContentStaticCodeBlock({ language, code, fontSize = 16 }: Conten
 
   const normalized = language.toLowerCase();
   const label = normalized.toUpperCase();
-  const cmLanguage: 'javascript' | 'python' | 'jsx' | 'tsx' | 'html' | undefined =
+  const cmLanguage: 'javascript' | 'python' | 'jsx' | 'tsx' | 'html' | 'json' | 'http' | undefined =
     normalized === 'jsx' ? 'jsx'
     : normalized === 'tsx' ? 'tsx'
+    : normalized === 'ts' || normalized === 'typescript' ? 'tsx'
+    : normalized === 'json' ? 'json'
     : normalized === 'javascript' || normalized === 'js' ? 'javascript'
     : normalized === 'html' ? 'html'
+    : normalized === 'http' ? 'http'
     : undefined;
 
   const handleCopy = async () => {
@@ -41,7 +44,7 @@ export function ContentStaticCodeBlock({ language, code, fontSize = 16 }: Conten
 
   return (
     <div
-      className="my-6 rounded-md border bg-muted/30"
+      className="my-6 w-full max-w-full rounded-md border bg-muted/30"
       data-role="content-static-code-block"
       data-language={language}
     >
@@ -59,7 +62,10 @@ export function ContentStaticCodeBlock({ language, code, fontSize = 16 }: Conten
         </Button>
       </div>
 
-      <div className="overflow-auto" style={{ maxHeight: `${maxHeightPx}px` }}>
+      <div
+        className="w-full max-w-full overflow-y-auto"
+        style={{ maxHeight: `${maxHeightPx}px` }}
+      >
         {cmLanguage ? (
           <CodeMirrorCodeBlock
             value={code}
@@ -71,8 +77,12 @@ export function ContentStaticCodeBlock({ language, code, fontSize = 16 }: Conten
           />
         ) : (
           <pre
-            className="p-3 font-mono text-sm whitespace-pre overflow-x-auto"
-            style={{ fontSize: `${fontSize * 0.875}px` }}
+            className="p-3 font-mono text-sm whitespace-pre-wrap break-words"
+            style={{
+              fontSize: `${fontSize * 0.875}px`,
+              wordBreak: 'break-word',
+              overflowWrap: 'anywhere',
+            }}
           >
             <code>{code}</code>
           </pre>
