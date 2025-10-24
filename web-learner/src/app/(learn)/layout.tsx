@@ -26,7 +26,11 @@ import { useLearningStore } from '@/store/learningStore';
 // This new component will contain the data loading logic and the original layout's JSX.
 // It's wrapped in a client component that can use Suspense and Search Params.
 function LearnLayoutContent({ children }: { children: React.ReactNode }) {
-  const { loadPath, loadSection, currentPath, uiState, updateUIState } = useLearningStore();
+  const loadPath = useLearningStore((state) => state.loadPath);
+  const loadSection = useLearningStore((state) => state.loadSection);
+  const currentPath = useLearningStore((state) => state.currentPath);
+  const uiState = useLearningStore((state) => state.uiState);
+  const updateUIState = useLearningStore((state) => state.updateUIState);
   const searchParams = useSearchParams();
   const subjectFromUrl = searchParams.get('subject') ?? searchParams.get('language');
   const sectionFromUrl = searchParams.get('section');

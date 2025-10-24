@@ -45,6 +45,8 @@ export function MermaidDiagram({ code, fontSize = 16, sectionId, markdownIndex }
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewMarkup, setPreviewMarkup] = useState<string | null>(null);
+  const [svgMarkup, setSvgMarkup] = useState<string | null>(null);
+  const [fullSizeMarkup, setFullSizeMarkup] = useState<string | null>(null);
   const diagramId = useMemo(
     () => `mermaid-excalidraw-${Math.random().toString(36).slice(2)}`,
     [],
@@ -116,17 +118,14 @@ export function MermaidDiagram({ code, fontSize = 16, sectionId, markdownIndex }
 
   useEffect(() => {
     let cancelled = false;
-    let disposeListener: (() => void) | null = null;
 
     async function renderExcalidrawSvg() {
       setError(null);
-      const container = containerRef.current;
       const report = useLearningStore.getState().reportMermaidError;
 
-      if (!container) return;
-      container.innerHTML = '';
-
       if (!normalizedCode.trim()) {
+        setSvgMarkup(null);
+        setFullSizeMarkup(null);
         return;
       }
 
@@ -239,28 +238,23 @@ export function MermaidDiagram({ code, fontSize = 16, sectionId, markdownIndex }
           svgElement.style.transform = `scale(${SCALE})`;
           svgElement.style.height = 'auto';
         }
+
         svgElement.style.maxWidth = '100%';
         svgElement.style.display = 'block';
         svgElement.style.margin = '0 auto';
 
-        container.appendChild(svgElement);
+        const scaledMarkup = serializer.serializeToString(svgElement);
 
-        const handlePreviewClick = () => {
-          setPreviewMarkup(fullSizeMarkup);
-        };
+        if (cancelled) return;
 
-        container.style.cursor = 'zoom-in';
-        container.title = '点击查看大图';
-        container.addEventListener('click', handlePreviewClick);
-        disposeListener = () => {
-          container.removeEventListener('click', handlePreviewClick);
-          container.style.cursor = '';
-          container.removeAttribute('title');
-        };
+        setSvgMarkup(scaledMarkup);
+        setFullSizeMarkup(fullSizeMarkup);
       } catch (e) {
         if (cancelled) return;
         const message = e instanceof Error ? e.message : 'Mermaid 渲染失败';
         setError(message);
+        setSvgMarkup(null);
+        setFullSizeMarkup(null);
         report?.({
           sectionId,
           markdownIndex,
@@ -277,12 +271,16 @@ export function MermaidDiagram({ code, fontSize = 16, sectionId, markdownIndex }
 
     return () => {
       cancelled = true;
-      disposeListener?.();
       setPreviewMarkup(null);
     };
   }, [code, normalizedCode, fontSize, sectionId, markdownIndex]);
 
   const closeOverlay = () => setPreviewMarkup(null);
+  const handlePreviewClick = () => {
+    if (fullSizeMarkup) {
+      setPreviewMarkup(fullSizeMarkup);
+    }
+  };
 
   if (error) {
     return (
@@ -300,9 +298,15 @@ export function MermaidDiagram({ code, fontSize = 16, sectionId, markdownIndex }
       <div
         ref={containerRef}
         className="my-4 flex flex-col items-center"
-        style={{ fontSize: `${fontSize}px` }}
         data-role="mermaid-diagram"
         data-diagram-id={diagramId}
+        onClick={handlePreviewClick}
+        title={fullSizeMarkup ? '点击查看大图' : undefined}
+        style={{
+          fontSize: `${fontSize}px`,
+          cursor: fullSizeMarkup ? 'zoom-in' : 'default',
+        }}
+        dangerouslySetInnerHTML={svgMarkup ? { __html: svgMarkup } : undefined}
       />
       {previewMarkup ? (
         <div

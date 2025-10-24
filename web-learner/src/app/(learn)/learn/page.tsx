@@ -8,7 +8,9 @@ import { ContentDisplay } from '@/components/ContentDisplay';
 // It's a best practice to wrap the component that uses useSearchParams in a client component.
 // The page is already a client component, but for Suspense, it's cleaner this way.
 function LearnPageContent() {
-  const { loadPath, loadSection, currentPath } = useLearningStore();
+  const loadPath = useLearningStore((state) => state.loadPath);
+  const loadSection = useLearningStore((state) => state.loadSection);
+  const currentPath = useLearningStore((state) => state.currentPath);
   const searchParams = useSearchParams();
   const subjectFromUrl = searchParams.get('subject') ?? searchParams.get('language');
   const sectionFromUrl = searchParams.get('section');
