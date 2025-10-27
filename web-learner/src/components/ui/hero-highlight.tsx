@@ -9,11 +9,13 @@ export const HeroHighlight = ({
   containerClassName,
   showHighlight = true,
 }: {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   className?: string;
   containerClassName?: string;
   showHighlight?: boolean;
 }) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const resolvedChildren = (children ?? null) as any;
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
 
@@ -73,7 +75,7 @@ export const HeroHighlight = ({
         />
       )}
 
-      <div className={cn("relative z-30", className)}>{children}</div>
+      <div className={cn("relative z-30", className)}>{resolvedChildren}</div>
     </div>
   );
 };
@@ -82,9 +84,11 @@ export const Highlight = ({
   children,
   className,
 }: {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   className?: string;
 }) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const resolvedChildren = (children ?? null) as any;
   return (
     <motion.span
       initial={{
@@ -108,7 +112,7 @@ export const Highlight = ({
         className,
       )}
     >
-      {children}
+      {resolvedChildren}
     </motion.span>
   );
 };

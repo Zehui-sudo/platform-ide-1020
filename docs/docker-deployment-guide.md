@@ -27,7 +27,7 @@
   2. 将本地调试过的 `config.json`、`nginx/local-dev.conf`、`.env` 等配置同步到服务器（生产环境请移除测试 Key）。
 - **命令**：
   ```bash
-  git clone https://<your-repo-url>.git /opt/platform-ide
+  git clone https://https://github.com/Zehui-sudo/platform-ide-1020.git /opt/platform-ide
   cd /opt/platform-ide
   ```
 - **验证**：`ls` 可看到 `web-learner/`、`scripts/`、`docker/` 等目录。

@@ -432,7 +432,7 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
       loadCourse: () => {
         const { contentResult, outlineResult } = get();
         try {
-            const pub: string | undefined = contentResult?.publishDir;
+            const pub = contentResult?.publishDir;
             const getSlug = () => {
               if (pub) {
                 const parts = String(pub).split(/[\/]+/);

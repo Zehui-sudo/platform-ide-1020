@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useEffect, Suspense } from 'react';
+import * as React from "react";
 import { useSearchParams } from 'next/navigation';
 import { useLearningStore } from '@/store/learningStore';
 import { ContentDisplay } from '@/components/ContentDisplay';
@@ -15,7 +15,7 @@ function LearnPageContent() {
   const subjectFromUrl = searchParams.get('subject') ?? searchParams.get('language');
   const sectionFromUrl = searchParams.get('section');
 
-  useEffect(() => {
+  React.useEffect(() => {
     const currentSubject = currentPath?.subject;
 
     // URL is the source of truth. Sync it with the store.
@@ -46,9 +46,9 @@ function LearnPageContent() {
 
 // The page component itself, which sets up the Suspense boundary
 export default function LearnPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <LearnPageContent />
-    </Suspense>
+  return React.createElement(
+    React.Suspense,
+    { fallback: <div>Loading...</div> },
+    React.createElement(LearnPageContent),
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, Suspense, useState } from "react";
+import { useEffect, useId, useMemo, Suspense, useState, createElement } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, Sparkles, NotebookPen, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -106,7 +106,11 @@ export function ThemeGenerator() {
 
         <PopoverContent className="w-80 p-5" align="center" side="bottom">
           {renderContent()}
-          <DebugStageSelector />
+          {createElement(
+            Suspense,
+            { fallback: null },
+            createElement(DebugStageSelectorInternal),
+          )}
         </PopoverContent>
       </Popover>
     </TooltipProvider>
@@ -211,15 +215,6 @@ const DebugStageSelectorInternal = () => {
         ))}
       </div>
     </div>
-  );
-};
-
-const DebugStageSelector = () => {
-  // Wrap in Suspense as useSearchParams is used internally
-  return (
-    <Suspense fallback={null}>
-      <DebugStageSelectorInternal />
-    </Suspense>
   );
 };
 

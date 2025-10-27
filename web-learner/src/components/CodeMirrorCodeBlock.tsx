@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo, useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
@@ -164,7 +164,7 @@ interface CodeMirrorCodeBlockProps {
   maxHeightPx?: number;
 }
 
-export const CodeMirrorCodeBlock = memo(function CodeMirrorCodeBlock({
+export function CodeMirrorCodeBlock({
   value,
   onChange,
   onBlur,
@@ -190,7 +190,7 @@ export const CodeMirrorCodeBlock = memo(function CodeMirrorCodeBlock({
       case 'tsx':
         return [javascript({ jsx: true, typescript: true })];
       case 'json':
-        return [javascript({ json: true })];
+        return [javascript()];
       case 'python':
         return [python()];
       case 'html':
@@ -355,17 +355,4 @@ export const CodeMirrorCodeBlock = memo(function CodeMirrorCodeBlock({
       />
     </div>
   );
-}, (prevProps, nextProps) => {
-  // Custom comparison to prevent unnecessary re-renders
-  return (
-    prevProps.value === nextProps.value &&
-    prevProps.language === nextProps.language &&
-    prevProps.readOnly === nextProps.readOnly &&
-    prevProps.className === nextProps.className &&
-    prevProps.onChange === nextProps.onChange &&
-    prevProps.onBlur === nextProps.onBlur &&
-    prevProps.searchTerm === nextProps.searchTerm &&
-    prevProps.enableSearch === nextProps.enableSearch &&
-    prevProps.transparent === nextProps.transparent
-  );
-});
+}
