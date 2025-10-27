@@ -1,0 +1,12 @@
+# Web API
+fastapi
+uvicorn[standard]
+
+# LLM & pipeline dependencies
+langgraph
+openai
+google-generativeai
+
+# Utilities used by helper scripts
+pillow
+numpy

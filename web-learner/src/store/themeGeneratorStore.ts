@@ -248,13 +248,26 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
             }),
           });
 
-          if (!res.ok) throw new Error(`Failed to start job: ${res.status}`);
+          if (!res.ok) {
+            let message = `Failed to start job: ${res.status}`;
+            try {
+              const data = await res.json();
+              message = String((data as { detail?: string; error?: string })?.detail ?? (data as { error?: string })?.error ?? message);
+            } catch {}
+            throw new Error(message);
+          }
           const { jobId } = (await res.json()) as JobStartResponse;
           set({ jobId });
           get().subscribeToOutline(jobId);
         } catch (error) {
           console.error('Failed to generate theme:', error);
-          set({ stage: 'idle' });
+          const detail = error instanceof Error ? error.message : '无法启动大纲生成任务';
+          set({
+            stage: 'idle',
+            collectStage: { status: 'error', detail },
+            outlineStage: { status: 'error', detail },
+            isSubscribing: false,
+          });
         }
       },
       
@@ -368,13 +381,25 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
             body: JSON.stringify({ refJobId: jobId, debug: true }),
           });
 
-          if (!res.ok) throw new Error(`Failed to start content generation: ${res.status}`);
+          if (!res.ok) {
+            let message = `Failed to start content generation: ${res.status}`;
+            try {
+              const data = await res.json();
+              message = String((data as { detail?: string; error?: string })?.detail ?? (data as { error?: string })?.error ?? message);
+            } catch {}
+            throw new Error(message);
+          }
           const { jobId: cJobId } = (await res.json()) as JobStartResponse;
           set({ contentJobId: cJobId });
           get().subscribeToContent(cJobId);
         } catch (error) {
           console.error(error);
-          set({ stage: 'outline_ready' });
+          const detail = error instanceof Error ? error.message : '无法启动章节生成任务';
+          set({
+            stage: 'outline_ready',
+            contentStage: { status: 'error', detail },
+            isSubscribing: false,
+          });
         }
       },
 

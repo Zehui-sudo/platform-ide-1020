@@ -95,3 +95,6 @@ pnpm-lock.yaml
 generation_log.txt
 __pycache__/
 *.pyc
+
+#Venv
+venv/
