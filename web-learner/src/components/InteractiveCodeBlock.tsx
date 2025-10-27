@@ -26,8 +26,6 @@ export function InteractiveCodeBlock({
   // Subscribe only to the specific code snippet for this section
   const userCode = useLearningStore((state) => state.userCodeSnippets[sectionId]);
   const updateUserCode = useLearningStore((state) => state.updateUserCode);
-  const pyodideStatus = useLearningStore((state) => state.pyodideStatus);
-  const pyodideError = useLearningStore((state) => state.pyodideError);
   
   const [code, setCode] = useState(userCode || initialCode);
   const [output, setOutput] = useState('');
@@ -62,21 +60,11 @@ export function InteractiveCodeBlock({
 
     try {
       if (language === 'python') {
-        // Check if Pyodide is ready
-        if (pyodideStatus !== 'ready') {
-          if (pyodideStatus === 'error') {
-            throw new Error(pyodideError || 'Pyodide加载失败');
-          }
-          throw new Error('Python环境正在加载中，请稍候...');
-        }
-
-        // Execute Python code with Pyodide
         const result = await pyodideService.runPython(code);
-        
         if (result.error) {
           setError(result.error);
         } else {
-          setOutput(result.output);
+          setOutput(result.output || '执行成功，但没有输出。');
         }
       } else {
         // JavaScript execution (using eval in a safe way)
@@ -223,18 +211,13 @@ export function InteractiveCodeBlock({
               type="button"
               size="sm"
               onClick={handleRunCode}
-              disabled={isRunning || (language === 'python' && pyodideStatus === 'loading')}
+              disabled={isRunning}
               className="flex items-center gap-2"
             >
               {isRunning ? (
                 <>
                   <Loader2 className="h-3 w-3 animate-spin" />
                   运行中...
-                </>
-              ) : language === 'python' && pyodideStatus === 'loading' ? (
-                <>
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  准备Python环境...
                 </>
               ) : (
                 <>

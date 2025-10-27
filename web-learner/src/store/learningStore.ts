@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { LearningState, LearningActions, LearningPath, SectionContent, ChatMessage, ChatSession, PyodideStatus, ContextReference, AIProviderType, Chapter, SectionLink, Section } from '@/types';
-import { pyodideService } from '@/services/pyodideService';
+import type { LearningState, LearningActions, LearningPath, SectionContent, ChatMessage, ChatSession, ContextReference, AIProviderType, Chapter, SectionLink, Section } from '@/types';
 import { getKnowledgeLinkService } from '@/services/knowledgeLinkService';
 // contentPath legacy helpers are no longer used for section resolution
 
@@ -304,8 +303,6 @@ export const useLearningStore = create<LearningState & LearningActions>()(
       activeChatSessionId: null,
       aiProvider: 'openai' as AIProviderType,
       sendingMessage: false,
-      pyodideStatus: 'unloaded' as PyodideStatus,
-      pyodideError: null,
       fontSize: 16,
       fontFamilyId: null as unknown as string | null,
       fontFamily: null as unknown as string | null,
@@ -431,11 +428,6 @@ export const useLearningStore = create<LearningState & LearningActions>()(
           // If no chats exist, create a default one
           if (get().chatSessions.length === 0) {
             get().createNewChat();
-          }
-
-          // Load Pyodide for Python subject
-          if (subject === 'python' && get().pyodideStatus === 'unloaded') {
-            get().loadPyodide();
           }
 
         } catch (error) {
@@ -606,26 +598,6 @@ export const useLearningStore = create<LearningState & LearningActions>()(
             return session;
           }),
         }));
-      },
-
-      // Pyodide Actions
-      loadPyodide: async () => {
-        const state = get();
-        if (state.pyodideStatus !== 'unloaded') {
-          return;
-        }
-
-        set({ pyodideStatus: 'loading', pyodideError: null });
-
-        try {
-          await pyodideService.loadPyodide();
-          set({ pyodideStatus: 'ready', pyodideError: null });
-        } catch (error) {
-          set({
-            pyodideStatus: 'error',
-            pyodideError: error instanceof Error ? error.message : 'Failed to load Pyodide'
-          });
-        }
       },
 
       setFontSize: (fontSize: number) => {
@@ -855,8 +827,6 @@ declare global {
 //     currentSection: null,
 //     loading: { path: false, section: false },
 //     error: { path: null, section: null },
-//     pyodideStatus: 'unloaded',
-//     pyodideError: null,
 //     selectedContent: null,
 //     sendingMessage: false,
 //     preferredSubject: undefined,

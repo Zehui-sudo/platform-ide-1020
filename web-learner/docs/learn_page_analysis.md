@@ -39,17 +39,15 @@ src/app/(learn)/layout.tsx
 
 ## 3. Zustand (useLearningStore) 状态管理 (已更新)
 
-`useLearningStore` 中增加了与 **Pyodide (WebAssembly Python)** 相关的状态和操作，用于在浏览器中直接运行 Python 代码。
+`useLearningStore` 最初曾用于管理 **Pyodide (WebAssembly Python)** 的加载状态，但最新版本已切换到后端 FastAPI + Docker 沙箱执行模式，因此相关状态已移除。
 
 ### State (状态) - 新增
 
--   `pyodideStatus` ('unloaded' | 'loading' | 'ready' | 'error'): 跟踪 Pyodide 的加载状态。
--   `pyodideError` (string | null): 存储 Pyodide 加载或运行过程中发生的错误。
+-   （已移除）`pyodideStatus`、`pyodideError`
 
 ### Actions (操作) - 新增/修改
 
--   `loadPath(language)`: **(已修改)** 现在当 `language` 为 'python' 时，此 action 会自动触发 `loadPyodide` action 来加载 Pyodide 环境。
--   `loadPyodide()`: **(新增)** 异步加载和初始化 Pyodide 实例，并更新 `pyodideStatus` 和 `pyodideError` 状态。
+-   早期的 `loadPyodide()` 已废弃，Python 代码执行改由 `/api/execute/run` 后端 API 完成。
 
 ### 完整的状态和操作列表
 
@@ -63,12 +61,10 @@ src/app/(learn)/layout.tsx
 -   `uiState` (Object): 存储UI相关的状态 (如展开的章节、搜索查询)。
 -   `chatSessions` (Array): 存储所有的 AI 对话会话。
 -   `activeChatSessionId` (string | null): 当前激活的对话 ID。
--   **`pyodideStatus`**: Pyodide 的加载状态。
--   **`pyodideError`**: Pyodide 的错误信息。
 
 #### Actions (操作)
 
--   `loadPath(language)`: 加载学习路径，并在需要时初始化 Pyodide。
+-   `loadPath(language)`: 加载学习路径。
 -   `loadSection(sectionId)`: 加载章节内容。
 -   `updateUserCode(sectionId, code)`: 更新用户代码。
 -   `updateUIState(uiState)`: 更新 UI 状态。
@@ -77,4 +73,3 @@ src/app/(learn)/layout.tsx
 -   `deleteChat(sessionId)`: 删除对话。
 -   `renameChat(sessionId, newTitle)`: 重命名对话。
 -   `addMessageToActiveChat(message)`: 添加消息。
--   **`loadPyodide()`**: 加载 Pyodide。

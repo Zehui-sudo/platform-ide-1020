@@ -24,6 +24,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+import time
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 from uuid import uuid4
 
@@ -50,6 +51,9 @@ OUTLINE_SCRIPT = REPO_ROOT / "scripts" / "pipelines" / "langgraph" / "integrated
 CHAPTER_SCRIPT = (
     REPO_ROOT / "scripts" / "pipelines" / "generation" / "generate_chapters_from_integrated_standalone.py"
 )
+EXECUTION_OUTPUT_LIMIT = 10_000
+DEFAULT_EXECUTION_TIMEOUT = 10.0
+MAX_EXECUTION_TIMEOUT = 30.0
 
 
 # ----------------------------
@@ -241,6 +245,39 @@ def _try_parse_int(value: Any) -> Optional[int]:
         return int(value)
     except Exception:
         return None
+
+
+_EXECUTION_SENSITIVE_ENV_PREFIXES = (
+    "OPENAI_",
+    "DEEPSEEK_",
+    "GOOGLE_",
+    "MOONSHOT_",
+    "KIMI_",
+    "AWS_",
+    "AZURE_",
+    "GITHUB_",
+)
+
+
+def _build_execution_env() -> Dict[str, str]:
+    """Create a sanitized environment for temporary code execution."""
+    safe_env: Dict[str, str] = {}
+    for key, value in os.environ.items():
+        if any(key.startswith(prefix) for prefix in _EXECUTION_SENSITIVE_ENV_PREFIXES):
+            continue
+        safe_env[key] = value
+    # Force deterministic encoding and unbuffered output
+    safe_env["PYTHONUNBUFFERED"] = "1"
+    safe_env["PYTHONIOENCODING"] = "utf-8"
+    # Drop PYTHONPATH to avoid leaking repo internals into user code
+    safe_env.pop("PYTHONPATH", None)
+    return safe_env
+
+
+def _trim_output(text: str) -> str:
+    if len(text) <= EXECUTION_OUTPUT_LIMIT:
+        return text
+    return text[:EXECUTION_OUTPUT_LIMIT] + "\n...[output truncated]..."
 
 
 # ----------------------------
@@ -512,6 +549,91 @@ def _parse_content_line(
 
     if "✅" in text and "完成" in text or "完成。无报告可显示。" in text:
         job_manager.update_stage(job, "content", {"status": "completed", "progress": 1, "detail": "完成"})
+
+
+# ----------------------------
+# 临时代码执行（后续可替换为 Docker 沙箱）
+# ----------------------------
+
+async def _execute_python_snippet(code: str, *, timeout: float = DEFAULT_EXECUTION_TIMEOUT) -> Dict[str, Any]:
+    safe_timeout = max(1.0, min(float(timeout), MAX_EXECUTION_TIMEOUT))
+    started_at = time.monotonic()
+    timed_out = False
+    exec_stdout = ""
+    exec_stderr = ""
+    exit_code: Optional[int] = None
+    status = "success"
+
+    payload = json.dumps({"code": code, "timeout": safe_timeout})
+    docker_image = os.environ.get("SANDBOX_IMAGE", "platform-ide-python-sandbox")
+    docker_cmd = [
+        "docker",
+        "run",
+        "--rm",
+        "--network=none",
+        "--pids-limit=64",
+        "--memory=512m",
+        "--cpus=1.0",
+        "-i",
+        docker_image,
+    ]
+
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *docker_cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=_build_execution_env(),
+        )
+        assert process.stdin is not None
+        assert process.stdout is not None
+        assert process.stderr is not None
+
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                process.communicate(input=payload.encode("utf-8")),
+                timeout=safe_timeout + 1.0,
+            )
+        except asyncio.TimeoutError:
+            timed_out = True
+            status = "timeout"
+            process.kill()
+            with suppress(Exception):
+                await process.communicate()
+            stdout_bytes, stderr_bytes = b"", b"[server] docker run timeout"
+
+        exit_code = process.returncode
+        try:
+            parsed = json.loads(stdout_bytes.decode("utf-8", errors="replace"))
+        except json.JSONDecodeError:
+            parsed = None
+
+        if isinstance(parsed, dict) and "status" in parsed:
+            status = parsed.get("status", "error")
+            exec_stdout = _trim_output(str(parsed.get("stdout", "")))
+            exec_stderr = _trim_output(str(parsed.get("stderr", "")))
+            timed_out = bool(parsed.get("timedOut", False))
+            exit_code = parsed.get("exitCode")
+        else:
+            status = "error"
+            exec_stdout = _trim_output(stdout_bytes.decode("utf-8", errors="replace"))
+            exec_stderr = _trim_output(stderr_bytes.decode("utf-8", errors="replace"))
+    except Exception as exc:
+        status = "error"
+        exec_stdout = ""
+        exec_stderr = f"[server] 执行失败: {exc}"
+        exit_code = None
+
+    duration = time.monotonic() - started_at
+    return {
+        "status": status,
+        "stdout": exec_stdout,
+        "stderr": exec_stderr,
+        "exitCode": exit_code,
+        "timedOut": timed_out,
+        "duration": duration,
+    }
 
 
 # ----------------------------
@@ -807,6 +929,35 @@ app.add_middleware(
 @app.get("/")
 async def root() -> Dict[str, str]:
     return {"message": "Platform IDE Python API server is running"}
+
+
+@app.post("/api/execute/run")
+async def execute_run(payload: Dict[str, Any]) -> Dict[str, Any]:
+    language = str(payload.get("language") or "python").strip().lower()
+    if language not in {"python", "py"}:
+        raise HTTPException(status_code=400, detail="当前仅支持 language=python")
+    code = payload.get("code")
+    if not isinstance(code, str) or not code.strip():
+        raise HTTPException(status_code=400, detail="请求体需提供非空的 code 字符串")
+
+    timeout_raw = payload.get("timeout")
+    timeout_val = DEFAULT_EXECUTION_TIMEOUT
+    if timeout_raw is not None:
+        try:
+            timeout_val = float(timeout_raw)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="timeout 参数必须为数字") from None
+
+    result = await _execute_python_snippet(code, timeout=timeout_val)
+    return {
+        "status": result["status"],
+        "language": "python",
+        "stdout": result["stdout"],
+        "stderr": result["stderr"],
+        "exitCode": result["exitCode"],
+        "timedOut": result["timedOut"],
+        "duration": result["duration"],
+    }
 
 
 @app.post("/api/outline/start")

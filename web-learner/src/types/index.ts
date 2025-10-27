@@ -97,9 +97,6 @@ export interface KnowledgeIndexEntry {
   codeExamples?: string[];      // 代码示例中的关键函数/类名
 }
 
-// Pyodide状态类型
-export type PyodideStatus = 'unloaded' | 'loading' | 'ready' | 'error';
-
 // 全局状态类型
 export interface LearningState {
   currentPath: LearningPath | null;
@@ -128,9 +125,6 @@ export interface LearningState {
   // AI Provider State
   aiProvider: AIProviderType;
   sendingMessage: boolean;
-  // Pyodide State
-  pyodideStatus: PyodideStatus;
-  pyodideError: string | null;
   // Font Size State
   fontSize: number;
   // Font family selection (global, excludes code blocks)
@@ -197,8 +191,6 @@ export interface LearningActions {
   // AI Provider Actions
   setAIProvider: (provider: AIProviderType) => void;
   sendChatMessage: (content: string, contextReference?: ContextReference | null, language?: string) => Promise<void>;
-  // Pyodide Actions
-  loadPyodide: () => Promise<void>;
   // Font Size Actions
   setFontSize: (fontSize: number) => void;
   // Font Family Actions
