@@ -60,7 +60,7 @@ function parseLineForStages(job: JobRecord, line: string) {
     }
 
     // output path
-    const mOut = line.match(/输出文件:\s*(.+\.json)\s*$/);
+    const mOut = line.match(/\[完成\] 输出文件:\s*(.+\.json)\s*$/);
     if (mOut) {
       job.outputPath = mOut[1].trim();
       // derive log path from slug-timestamp naming

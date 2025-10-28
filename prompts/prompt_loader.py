@@ -5,7 +5,6 @@
 Robust prompt loader for parsing prompt_catalog.md.
 """
 
-import re
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -30,38 +29,39 @@ def _load_prompts_from_catalog() -> Dict[str, str]:
         _cache = {}
         return _cache
 
-    # Split the file by '### ' headers, which denote the start of a new prompt key
-    # The lookahead assertion `(?=
-### )` keeps the delimiter.
-    sections = re.split(r'\n(?=### )', content)
-    
-    for section in sections:
-        section = section.strip()
-        if not section.startswith('### '):
+    lines = content.splitlines()
+    current_key: Optional[str] = None
+    current_lines: list[str] = []
+    inside_block = False
+
+    for raw_line in lines:
+        line = raw_line.rstrip('\n')
+        stripped = line.strip()
+
+        if not inside_block and stripped.startswith('### '):
+            current_key = stripped[4:].strip()
+            current_lines = []
             continue
 
-        lines = section.splitlines()
-        key = lines[0].replace('### ', '').strip()
-        
-        # Find the start of the main code block
-        code_block_start_index = -1
-        for i, line in enumerate(lines):
-            if line.strip().startswith('```'):
-                code_block_start_index = i
-                break
-        
-        if code_block_start_index != -1:
-            # Find the end of the main code block by searching from the bottom up
-            code_block_end_index = -1
-            for i in range(len(lines) - 1, code_block_start_index, -1):
-                if lines[i].strip() == '```':
-                    code_block_end_index = i
-                    break
-            
-            if code_block_end_index != -1:
-                # Extract the content between the fences
-                prompt_lines = lines[code_block_start_index + 1 : code_block_end_index]
-                prompts[key] = "\n".join(prompt_lines)
+        if current_key is None:
+            continue
+
+        if not inside_block:
+            if stripped.startswith('```'):
+                # Start of the fenced prompt content (language marker optional).
+                inside_block = True
+            continue
+
+        # We are inside a fenced code block for the current prompt key.
+        if stripped.startswith('```') and stripped.strip('`').strip() == '':
+            # Closing fence encountered; finalize prompt.
+            prompts[current_key] = "\n".join(current_lines)
+            current_key = None
+            current_lines = []
+            inside_block = False
+            continue
+
+        current_lines.append(raw_line)
 
     _cache = prompts
     return _cache

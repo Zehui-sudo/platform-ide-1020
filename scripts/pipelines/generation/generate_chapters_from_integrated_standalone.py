@@ -931,7 +931,9 @@ async def generate_and_review_by_chapter_node_tool(state: WorkState, llm_generat
                 if txt_s:
                     group_context = (group_context + "\n\n" + txt_s).strip()
                 try:
-                    (drafts_dir / f"{sid}.md").write_text(txt_s, encoding="utf-8")
+                    draft_path = drafts_dir / f"{sid}.md"
+                    draft_path.write_text(txt_s, encoding="utf-8")
+                    logging.getLogger(__name__).info(f"[已保存初稿] {draft_path}")
                 except Exception:
                     pass
         else:
@@ -968,7 +970,9 @@ async def generate_and_review_by_chapter_node_tool(state: WorkState, llm_generat
                     txt_s = txt or ""
                 group_drafts[sid] = txt_s
                 try:
-                    (drafts_dir / f"{sid}.md").write_text(txt_s, encoding="utf-8")
+                    draft_path = drafts_dir / f"{sid}.md"
+                    draft_path.write_text(txt_s, encoding="utf-8")
+                    logging.getLogger(__name__).info(f"[已保存初稿] {draft_path}")
                 except Exception:
                     pass
 
@@ -1023,7 +1027,9 @@ async def generate_and_review_by_chapter_node_tool(state: WorkState, llm_generat
                         txt_s = txt or ""
                     group_drafts[sid] = txt_s
                     try:
-                        (drafts_dir / f"{sid}.md").write_text(txt_s, encoding="utf-8")
+                        draft_path = drafts_dir / f"{sid}.md"
+                        draft_path.write_text(txt_s, encoding="utf-8")
+                        logging.getLogger(__name__).info(f"[已保存初稿] {draft_path}")
                     except Exception:
                         pass
 
@@ -1348,9 +1354,22 @@ def _convert_reconstructed_to_outline_struct(subject: str, reconstructed: Dict[s
     groups_in: List[Dict[str, Any]] = reconstructed.get("groups") or []
     chapters: List[Dict[str, Any]] = []
     for ci, ch in enumerate(groups_in, start=1):
-        ch_title = ch.get("title") or f"第{ci}章"
-        ch_id = ch.get("id") or f"outline-ch-{ci}"
-        stype = (ch.get("structure_type") or "toolbox").strip().lower()
+        ch_title = (
+            ch.get("title")
+            or ch.get("group_title")
+            or f"第{ci}章"
+        )
+        ch_id = (
+            ch.get("id")
+            or ch.get("group_id")
+            or f"outline-ch-{ci}"
+        )
+        stype_raw = (
+            ch.get("structure_type")
+            or ch.get("group_structure_type")
+            or "toolbox"
+        )
+        stype = str(stype_raw).strip().lower()
         secs = ch.get("sections") or []
         group = {
             "title": ch_title,
