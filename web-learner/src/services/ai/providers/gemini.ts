@@ -78,136 +78,44 @@ export class GeminiProvider extends AIProvider {
     return new ReadableStream({
       async start(controller) {
         let buffer = '';
-        let braceDepth = 0;
-        let bracketDepth = 0;
-        let inString = false;
-        let escaping = false;
-
-        const emitFromPayload = (raw: string) => {
-          if (!raw) return;
-          let payload = raw.trim();
-          if (!payload) return;
-          if (payload.startsWith('data:')) {
-            payload = payload.replace(/^data:\s*/, '');
-          }
-
-          if (!payload || payload === '[DONE]') return;
-
-          try {
-            const parsed = JSON.parse(payload);
-            const items = Array.isArray(parsed) ? parsed : [parsed];
-
-            for (const item of items) {
-              const candidate = item?.candidates?.[0];
-              const parts: GeminiContentPart[] | undefined = candidate?.content?.parts;
-              if (!parts?.length) continue;
-
-              const text = parts
-                .map((part: GeminiContentPart) => part.text ?? '')
-                .filter(Boolean)
-                .join('');
-
-              if (text) {
-                const delta = text.startsWith(accumulatedText)
-                  ? text.slice(accumulatedText.length)
-                  : text;
-
-                if (delta) {
-                  controller.enqueue(encoder.encode(delta));
-                  accumulatedText = text;
-                }
-              }
-            }
-          } catch (error) {
-            console.error('Failed to parse Gemini stream chunk:', payload, error);
-          }
-        };
-
-        let accumulatedText = '';
+        const dataPrefix = 'data:';
 
         try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value, { stream: true });
-            for (let i = 0; i < chunk.length; i++) {
-              const char = chunk[i];
-              buffer += char;
+            buffer += decoder.decode(value, { stream: true });
 
-              if (inString) {
-                if (escaping) {
-                  escaping = false;
+            let eolIndex;
+            while ((eolIndex = buffer.indexOf('\n')) >= 0) {
+              const line = buffer.slice(0, eolIndex).trim();
+              buffer = buffer.slice(eolIndex + 1);
+
+              if (line.startsWith(dataPrefix)) {
+                const jsonStr = line.slice(dataPrefix.length).trim();
+                if (jsonStr === '[DONE]' || !jsonStr) {
                   continue;
                 }
-                if (char === '\\') {
-                  escaping = true;
-                  continue;
-                }
-                if (char === '"') {
-                  inString = false;
-                }
-                continue;
-              }
+                try {
+                  const parsed = JSON.parse(jsonStr);
+                  const candidate = parsed?.candidates?.[0];
+                  const parts: GeminiContentPart[] | undefined = candidate?.content?.parts;
+                  if (!parts?.length) continue;
 
-              if (char === '"') {
-                inString = true;
-                continue;
-              }
+                  const text = parts
+                    .map((part: GeminiContentPart) => part.text ?? '')
+                    .filter(Boolean)
+                    .join('');
 
-              if (char === '{') {
-                braceDepth++;
-                continue;
-              }
-
-              if (char === '}') {
-                braceDepth = Math.max(0, braceDepth - 1);
-                if (braceDepth === 0 && bracketDepth === 0) {
-                  emitFromPayload(buffer);
-                  buffer = '';
-                }
-                continue;
-              }
-
-              if (char === '[') {
-                bracketDepth++;
-                continue;
-              }
-
-              if (char === ']') {
-                bracketDepth = Math.max(0, bracketDepth - 1);
-                if (braceDepth === 0 && bracketDepth === 0) {
-                  emitFromPayload(buffer);
-                  buffer = '';
-                }
-                continue;
-              }
-
-              if (braceDepth === 0 && bracketDepth === 0 && (char === '\n' || char === '\r')) {
-                const trimmed = buffer.trim();
-                if (!trimmed) {
-                  buffer = '';
-                  continue;
-                }
-
-                if (trimmed === '[DONE]' || trimmed === 'data: [DONE]') {
-                  buffer = '';
-                  continue;
-                }
-
-                if (!trimmed.includes('{')) {
-                  if (trimmed.startsWith('data:')) {
-                    emitFromPayload(buffer);
+                  if (text) {
+                    controller.enqueue(encoder.encode(text));
                   }
-                  buffer = '';
+                } catch (error) {
+                  console.error('Failed to parse Gemini stream chunk:', jsonStr, error);
                 }
               }
             }
-          }
-
-          const remaining = buffer.trim();
-          if (remaining) {
-            emitFromPayload(buffer);
           }
           controller.close();
         } catch (error) {
@@ -255,7 +163,9 @@ export class GeminiProvider extends AIProvider {
     }
 
     const endpoint = stream ? 'streamGenerateContent' : 'generateContent';
-    const url = `${this.apiBase}/models/${model}:${endpoint}?key=${this.apiKey}`;
+    const url = `${this.apiBase}/models/${model}:${endpoint}?key=${this.apiKey}${
+      stream ? '&alt=sse' : ''
+    }`;
 
     try {
       const response = await fetch(url, {
