@@ -1,4 +1,4 @@
-# tailwind css (id: tailwind-css)
+# Tailwind css (id: tailwind-css)
 
 ## 第1章：第一章：入门与核心理念 (id: tw-ch-1)
 ### 第一章：入门与核心理念 (id: tw-ch-1-gr-1)

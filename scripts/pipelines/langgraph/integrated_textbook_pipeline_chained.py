@@ -10,10 +10,10 @@
 示例
   python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
     --stage full \
-    --subject "Web媒体加密" \
+    --subject "命令行操作" \
     --top-n 3 \
-    --learning-style principles \
-    --expected-content "主流流媒体平台视频分发的加密方式，如何防止恶意下载" \
+    --learning-style deep_preview \
+    --expected-content "主希望知道命令行操作，包括但不限于SSH、操作系统、文件管理、git管理、docker等" \
     --print-prompt
 
   - 只跑教材推荐+目录抓取：

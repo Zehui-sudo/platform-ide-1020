@@ -1,4 +1,4 @@
-# web媒体加密 (id: web-media-encryption)
+# Web 媒体加密 (id: web-media-encryption)
 
 ## 第1章：第一章：奠定基石 · 为什么Web媒体需要加密？ (id: wme-ch-1)
 ### 第一章：奠定基石 · 为什么Web媒体需要加密？ (id: wme-ch-1-gr-1)
