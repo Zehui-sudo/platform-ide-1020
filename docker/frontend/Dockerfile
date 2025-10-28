@@ -6,6 +6,7 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
 RUN corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY .npmrc ./
 COPY tsconfig.base.json ./
 COPY web-learner/package.json web-learner/
 
@@ -23,6 +24,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/package.json ./package.json
 COPY --from=deps /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=deps /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=deps /app/.npmrc ./.npmrc
 COPY --from=deps /app/tsconfig.base.json ./tsconfig.base.json
 COPY --from=deps /app/web-learner/package.json ./web-learner/package.json
 
@@ -44,11 +46,12 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=builder /app/.npmrc ./.npmrc
 
 COPY --from=builder /app/web-learner/.next ./web-learner/.next
 COPY --from=builder /app/web-learner/public ./web-learner/public
 COPY --from=builder /app/web-learner/package.json ./web-learner/package.json
-COPY --from=builder /app/web-learner/next.config.mjs ./web-learner/next.config.mjs
+COPY --from=builder /app/web-learner/next.config.ts ./web-learner/next.config.ts
 COPY --from=builder /app/web-learner/scripts ./web-learner/scripts
 
 EXPOSE 3000
