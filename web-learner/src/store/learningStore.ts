@@ -301,7 +301,7 @@ export const useLearningStore = create<LearningState & LearningActions>()(
       },
       chatSessions: [],
       activeChatSessionId: null,
-      aiProvider: 'openai' as AIProviderType,
+      aiProvider: 'deepseek' as AIProviderType,
       sendingMessage: false,
       fontSize: 16,
       fontFamilyId: null as unknown as string | null,

@@ -34,7 +34,7 @@ services:
     environment:
       NEXT_PUBLIC_BACKEND_URL: ""
       OPENAI_API_KEY: "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"
-      OPENAI_MODEL: "gpt-5-mini-2025-08-07"
+      OPENAI_MODEL: "gpt-5-mini"
       GEMINI_API_KEY: "AIzaSyCUP24fUjQa5URokX1viGqJOB03uN-SlD4"
       GEMINI_MODEL: "gemini-2.5-flash"
       DEEPSEEK_API_KEY: "sk-8102e40a3ccb42b9a40ea6ab8467530b"

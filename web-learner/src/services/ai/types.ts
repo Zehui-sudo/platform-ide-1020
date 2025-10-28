@@ -1,6 +1,6 @@
 import { ChatMessage, ContextReference, SectionLink } from '@/types';
 
-export type AIProviderType = 'openai' | 'anthropic' | 'deepseek' | 'doubao';
+export type AIProviderType = 'openai' | 'deepseek' | 'gemini';
 
 export interface ChatRequest {
   messages: ChatMessage[];

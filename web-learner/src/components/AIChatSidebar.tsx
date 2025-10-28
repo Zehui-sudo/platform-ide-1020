@@ -164,10 +164,9 @@ export function AIChatSidebar({ toggleSidebar }: AIChatSidebarProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="openai">OpenAI</SelectItem>
-              <SelectItem value="anthropic">Claude</SelectItem>
               <SelectItem value="deepseek">DeepSeek</SelectItem>
-              <SelectItem value="doubao">豆包</SelectItem>
+              <SelectItem value="openai">OpenAI</SelectItem>
+              <SelectItem value="gemini">Gemini</SelectItem>
             </SelectContent>
           </Select>
         </div>

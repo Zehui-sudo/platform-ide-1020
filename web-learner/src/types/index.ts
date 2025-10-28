@@ -218,7 +218,7 @@ export interface LearningApi {
 }
 
 // AI Provider Types
-export type AIProviderType = 'openai' | 'anthropic' | 'deepseek' | 'doubao';
+export type AIProviderType = 'openai' | 'deepseek' | 'gemini';
 
 // AI Chat API Types
 export interface ChatAPIRequest {

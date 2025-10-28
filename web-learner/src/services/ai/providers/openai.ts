@@ -5,12 +5,15 @@ export class OpenAIProvider extends AIProvider {
   protected apiKey: string;
   protected model: string;
   protected apiBase: string;
+  protected fallbackModel: string | null;
 
   constructor() {
     super();
     this.apiKey = process.env.OPENAI_API_KEY || '';
     this.model = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
     this.apiBase = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
+    const configuredFallback = process.env.OPENAI_FALLBACK_MODEL || 'gpt-4o-mini';
+    this.fallbackModel = this.model === configuredFallback ? null : configuredFallback;
   }
 
   isConfigured(): boolean {
@@ -65,7 +68,20 @@ export class OpenAIProvider extends AIProvider {
     return stream.pipeThrough(transformStream);
   }
 
-  async chat(request: ChatRequest): Promise<ChatResponse | ReadableStream> {
+  private shouldFallbackForModelError(errorBody: unknown, message: string): boolean {
+    if (!errorBody || typeof errorBody !== 'object') return message.includes('does not exist');
+    const error = (errorBody as { error?: { code?: string; type?: string; param?: string } }).error;
+    if (!error) return message.includes('does not exist');
+    if (error.code === 'model_not_found') return true;
+    if (error.param === 'model') return true;
+    if (error.type === 'invalid_request_error' && message.includes('does not exist')) return true;
+    return false;
+  }
+
+  private async performChat(
+    request: ChatRequest,
+    hasFallenBack = false
+  ): Promise<ChatResponse | ReadableStream> {
     if (!this.isConfigured()) {
       throw new Error('OpenAI API key not configured');
     }
@@ -125,8 +141,31 @@ export class OpenAIProvider extends AIProvider {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error?.message || `OpenAI API error: ${response.status}`);
+        const errorBody = await response.json().catch(() => null);
+        const errorMessage =
+          (errorBody as { error?: { message?: string } } | null)?.error?.message ||
+          `OpenAI API error: ${response.status}`;
+
+        if (
+          !hasFallenBack &&
+          this.fallbackModel &&
+          model !== this.fallbackModel &&
+          this.shouldFallbackForModelError(errorBody, errorMessage)
+        ) {
+          try {
+            console.warn(
+              '[AI Provider] Falling back from model "%s" to "%s"',
+              model,
+              this.fallbackModel
+            );
+          } catch {}
+          return this.performChat(
+            { ...request, model: this.fallbackModel },
+            true
+          );
+        }
+
+        throw new Error(errorMessage);
       }
 
       if (stream) {
@@ -152,5 +191,9 @@ export class OpenAIProvider extends AIProvider {
       console.error('OpenAI API error:', error);
       throw error;
     }
+  }
+
+  async chat(request: ChatRequest): Promise<ChatResponse | ReadableStream> {
+    return this.performChat(request);
   }
 }
