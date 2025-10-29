@@ -52,9 +52,12 @@ export function ChatMessageRenderer({
           rehypePlugins={rehypePlugins}
           components={{
             p: ({ children }) => <p className="my-2 leading-relaxed">{children}</p>,
+            pre: ({ children }) => <>{children}</>,
             code: ({ inline, className, children, ...props }) => {
               const match = /language-(\w+)/.exec(className || '');
               const codeContent = String(children).replace(/\n$/, '');
+              // React Markdown passes an internal `node` prop we shouldn't forward
+              const { node, ...rest } = props as { node?: unknown };
 
               if (match) {
                 return (
@@ -65,26 +68,19 @@ export function ChatMessageRenderer({
                 );
               }
 
-              if (!inline) {
-                return (
-                  <pre className="my-3 rounded-md bg-muted/40 px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words overflow-hidden">
-                    <code
-                      {...props}
-                      className="break-words"
-                      style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
-                    >
-                      {codeContent}
-                    </code>
-                  </pre>
-                );
-              }
-
               return (
                 <code
-                  className="bg-muted text-muted-foreground font-mono px-1.5 py-1 rounded-md text-xs break-all"
-                  {...props}
+                  {...rest}
+                  className={cn(
+                    'bg-muted text-muted-foreground font-mono px-1.5 py-1 rounded-md text-xs',
+                    codeContent.includes('\n')
+                      ? 'whitespace-pre-wrap break-words'
+                      : 'break-normal',
+                    className
+                  )}
+                  style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
                 >
-                  {children}
+                  {codeContent}
                 </code>
               );
             },
