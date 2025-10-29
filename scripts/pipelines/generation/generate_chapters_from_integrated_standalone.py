@@ -12,8 +12,8 @@
 输入：包含 reconstructed_outline 的集成 JSON（如 llm-integrated-20251013-125553.json）
 
 用法示例：
-  python scripts/pipelines/generation/generate_chapters_from_integrated_standalone.py \
-    --input output/integrated_pipeline/command-line-operations-reconstructed-20251029-175456.json \
+  python3 scripts/pipelines/generation/generate_chapters_from_integrated_standalone.py \
+    --input output/integrated_pipeline/unsupervised-learning-integrated-20251029-213154.json \
     --config config.json \
     --skip-content-review \
     --debug
@@ -37,11 +37,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import concurrent.futures as cf
 import json
 import logging
 import os
 import re
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
@@ -179,6 +181,82 @@ def _prompt_from_catalog(key: str) -> str:
         return get_prompt(key)
     except Exception as exc:
         raise RuntimeError(f"无法从 prompts/prompt_catalog_data.py 加载 Prompt '{key}': {exc}") from exc
+
+
+class StepExecutionError(RuntimeError):
+    """统一封装阶段执行失败的异常，便于顶层捕捉。"""
+
+
+def _run_with_retry(
+    step_name: str,
+    func,
+    *,
+    max_attempts: int = 1,
+    timeout: Optional[float] = None,
+    delay: float = 1.0,
+    logger: Optional[logging.Logger] = None,
+):
+    """在重试与超时保护下执行同步任务。"""
+    attempts = max(1, int(max_attempts or 1))
+    timeout_value = None if timeout is None or timeout <= 0 else float(timeout)
+    wait_seconds = max(0.0, float(delay or 0.0))
+    last_exc: Optional[BaseException] = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            if logger:
+                logger.debug("%s: 开始第 %d/%d 次尝试", step_name, attempt, attempts)
+            if timeout_value is not None:
+                with cf.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(func)
+                    try:
+                        return future.result(timeout=timeout_value)
+                    except cf.TimeoutError as exc:
+                        future.cancel()
+                        raise TimeoutError(f"{step_name} 在 {timeout_value:.1f}s 内未完成") from exc
+            return func()
+        except TimeoutError as exc:
+            last_exc = exc
+            if logger:
+                logger.warning("%s: 第 %d/%d 次尝试超时 (%s)", step_name, attempt, attempts, exc)
+            if attempt < attempts and logger:
+                logger.info("%s: 将在 %.1fs 后重试（超时）", step_name, wait_seconds)
+        except Exception as exc:
+            last_exc = exc
+            if logger:
+                logger.warning(
+                    "%s: 第 %d/%d 次尝试失败 (%s: %s)",
+                    step_name,
+                    attempt,
+                    attempts,
+                    type(exc).__name__,
+                    exc,
+                )
+            if attempt < attempts and logger:
+                logger.info("%s: 将在 %.1fs 后重试", step_name, wait_seconds)
+        if attempt < attempts and wait_seconds > 0:
+            time.sleep(wait_seconds)
+
+    message = f"{step_name} 在 {attempts} 次尝试后仍未成功"
+    raise StepExecutionError(message) from last_exc
+
+
+def _normalize_timeout(value: Optional[float]) -> Optional[float]:
+    """规范化命令行传入的超时时间参数。"""
+    if value is None:
+        return None
+    try:
+        ts = float(value)
+    except (TypeError, ValueError):
+        return None
+    return ts if ts > 0 else None
+
+
+def _format_timeout(value: Optional[float]) -> str:
+    """将超时秒数格式化为日志友好文本。"""
+    if value is None:
+        return "不限"
+    return f"{value:.1f}s"
 
 
 # ----------------------------
@@ -1116,7 +1194,103 @@ async def generate_and_review_by_chapter_node_tool(state: WorkState, llm_generat
     return {**state, "drafts": drafts_all, "reviews": reviews_all, "failures": failures_all}
 
 
+async def review_drafts_node(state: WorkState, llm_review) -> WorkState:
+    """对已生成的草稿执行内容审查，仅调用审查模型。"""
+    cfg = state.get("config", {}) or {}
+    if cfg.get("skip_content_review", False):
+        logging.getLogger(__name__).info("已跳过内容审查（--skip-content-review）")
+        return state
+
+    max_parallel = int(cfg.get("max_parallel_requests", 8))
+    sem = asyncio.Semaphore(max(1, max_parallel))
+    debug = bool(cfg.get("debug"))
+
+    outline = state.get("outline_struct", {}) or {}
+    chapters_struct = outline.get("chapters") or []
+    selected_titles = state.get("selected_chapters") or [c.get("title", "") for c in chapters_struct]
+    topic_slug = state.get("topic_slug", "topic")
+    out_dir = BASE_DIR / "output" / topic_slug
+    reviews_dir = out_dir / "reviews"
+    ensure_dir(reviews_dir)
+
+    draft_map: Dict[str, str] = {
+        str(item.get("id", "")): item.get("content", "")
+        for item in (state.get("drafts") or [])
+        if item.get("id")
+    }
+
+    reviews_all: List[Dict[str, Any]] = []
+    failures_all: List[Dict[str, Any]] = []
+
+    async def _review_one(sec: Dict[str, Any], peer_meta: List[Dict[str, str]]) -> Dict[str, Any]:
+        pid = sec.get("id") or ""
+        peers = [pm for pm in peer_meta if (pm.get("id") or "") != pid]
+        content = draft_map.get(pid, "")
+        async with sem:
+            rv = await _review_one_point_with_context(
+                llm_review,
+                pid,
+                content,
+                peers,
+                debug=debug,
+            )
+        try:
+            (reviews_dir / f"{pid}.json").write_text(json.dumps(rv, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+        return rv
+
+    async def _review_group(chapter_title: str, group: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        sections = group.get("sections") or []
+        if not sections:
+            return [], []
+        peer_meta = [{"id": sec.get("id"), "title": sec.get("title")} for sec in sections if sec.get("id")]
+        tasks = [_review_one(sec, peer_meta) for sec in sections if sec.get("id")]
+        if not tasks:
+            return [], []
+        results = await asyncio.gather(*tasks)
+        failures = []
+        for rv in results:
+            if _severity_score(rv) >= 3:
+                failures.append({"id": rv.get("file_id"), "review": rv})
+        return results, failures
+
+    async def _review_chapter(ch: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        ch_title = ch.get("title", "")
+        if selected_titles and ch_title not in selected_titles:
+            return [], []
+        group_tasks = [_review_group(ch_title, gr) for gr in (ch.get("groups") or []) if gr.get("sections")]
+        if not group_tasks:
+            return [], []
+        results = await asyncio.gather(*group_tasks)
+        revs: List[Dict[str, Any]] = []
+        fails: List[Dict[str, Any]] = []
+        for gr_reviews, gr_failures in results:
+            revs.extend(gr_reviews)
+            fails.extend(gr_failures)
+        return revs, fails
+
+    chapter_tasks = [_review_chapter(ch) for ch in chapters_struct]
+    if chapter_tasks:
+        chapter_results = await asyncio.gather(*chapter_tasks)
+        for revs, fails in chapter_results:
+            reviews_all.extend(revs)
+            failures_all.extend(fails)
+
+    merged_reviews = list(state.get("reviews") or [])
+    merged_reviews.extend(reviews_all)
+    merged_failures = list(state.get("failures") or [])
+    merged_failures.extend(failures_all)
+
+    return {
+        **state,
+        "reviews": merged_reviews,
+        "failures": merged_failures,
+    }
+
+
 async def propose_and_apply_fixes_node(state: WorkState, llm) -> WorkState:
+    """按审查结果提出修复并（可选）自动应用。"""
     cfg_in = state.get("config", {}) or {}
     if cfg_in.get("skip_fixes", False):
         logging.getLogger(__name__).info("已跳过修复提案与自动应用（--skip-fixes）")
@@ -1440,6 +1614,7 @@ def _parse_selected(spec: Optional[str], total: int) -> List[int]:
 # 主流程
 # ----------------------------
 
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Generate chapters (standalone nodes) from integrated reconstructed_outline")
     ap.add_argument("--input", required=True, help="包含 reconstructed_outline 的 JSON 文件路径")
@@ -1455,6 +1630,23 @@ def main() -> int:
     ap.add_argument("--debug", action="store_true", help="开启调试日志，输出模型与所有 LLM Prompt，并写入 output/<subdir>/log.txt")
     ap.add_argument("--subject-type", type=str, choices=["tool", "theory"], default=None, help="主题类型（覆盖自动分类）")
     ap.add_argument("--classify-llm-key", type=str, default=None, help="分类用 LLM 键名（覆盖 node_llm/classify_subject/default）")
+    ap.add_argument("--retry-delay", type=float, default=1.0, help="阶段重试间隔秒数（默认 1 秒）")
+    ap.add_argument("--load-config-retries", type=int, default=1, help="加载配置最大尝试次数（默认 1）")
+    ap.add_argument("--load-config-timeout", type=float, default=120.0, help="加载配置超时时间（秒，默认 120）")
+    ap.add_argument("--input-retries", type=int, default=1, help="读取输入 JSON 最大尝试次数（默认 1）")
+    ap.add_argument("--input-timeout", type=float, default=120.0, help="读取输入 JSON 超时时间（秒，默认 120）")
+    ap.add_argument("--prepare-retries", type=int, default=1, help="准备大纲与状态最大尝试次数（默认 1）")
+    ap.add_argument("--prepare-timeout", type=float, default=120.0, help="准备大纲与状态超时时间（秒，默认 120）")
+    ap.add_argument("--classify-retries", type=int, default=1, help="主题分类最大尝试次数（默认 1）")
+    ap.add_argument("--classify-timeout", type=float, default=120.0, help="主题分类超时时间（秒，默认 120）")
+    ap.add_argument("--generate-retries", type=int, default=2, help="内容生成阶段最大尝试次数（默认 2）")
+    ap.add_argument("--generate-timeout", type=float, default=300.0, help="内容生成阶段超时时间（秒，默认 300）")
+    ap.add_argument("--review-retries", type=int, default=2, help="内容审查阶段最大尝试次数（默认 2）")
+    ap.add_argument("--review-timeout", type=float, default=300.0, help="内容审查阶段超时时间（秒，默认 300）")
+    ap.add_argument("--fix-retries", type=int, default=2, help="修复提案阶段最大尝试次数（默认 2）")
+    ap.add_argument("--fix-timeout", type=float, default=300.0, help="修复提案阶段超时时间（秒，默认 300）")
+    ap.add_argument("--output-retries", type=int, default=1, help="保存与汇总阶段最大尝试次数（默认 1）")
+    ap.add_argument("--output-timeout", type=float, default=120.0, help="保存与汇总阶段超时时间（秒，默认 120）")
     args = ap.parse_args()
 
     logging.basicConfig(
@@ -1464,84 +1656,252 @@ def main() -> int:
     )
     logger = logging.getLogger(__name__)
 
-    # 读取输入
-    p = Path(args.input)
-    if not p.exists():
-        logger.error(f"未找到输入文件: {p}")
-        return 1
+    retry_delay = max(0.0, float(args.retry_delay or 0.0))
+    config_retry_attempts = max(1, int(args.load_config_retries or 1))
+    config_retry_timeout = _normalize_timeout(args.load_config_timeout)
+    input_retry_attempts = max(1, int(args.input_retries or 1))
+    input_retry_timeout = _normalize_timeout(args.input_timeout)
+    prepare_retry_attempts = max(1, int(args.prepare_retries or 1))
+    prepare_retry_timeout = _normalize_timeout(args.prepare_timeout)
+    classify_retry_attempts = max(1, int(args.classify_retries or 1))
+    classify_retry_timeout = _normalize_timeout(args.classify_timeout)
+    generate_retry_attempts = max(1, int(args.generate_retries or 1))
+    generate_retry_timeout = _normalize_timeout(args.generate_timeout)
+    review_retry_attempts = max(1, int(args.review_retries or 1))
+    review_retry_timeout = _normalize_timeout(args.review_timeout)
+    fix_retry_attempts = max(1, int(args.fix_retries or 1))
+    fix_retry_timeout = _normalize_timeout(args.fix_timeout)
+    output_retry_attempts = max(1, int(args.output_retries or 1))
+    output_retry_timeout = _normalize_timeout(args.output_timeout)
+
+    logger.info(
+        "重试配置 | delay=%.1fs | config=%d×/%s | input=%d×/%s | prepare=%d×/%s | classify=%d×/%s | generate=%d×/%s | review=%d×/%s | fix=%d×/%s | output=%d×/%s",
+        retry_delay,
+        config_retry_attempts,
+        _format_timeout(config_retry_timeout),
+        input_retry_attempts,
+        _format_timeout(input_retry_timeout),
+        prepare_retry_attempts,
+        _format_timeout(prepare_retry_timeout),
+        classify_retry_attempts,
+        _format_timeout(classify_retry_timeout),
+        generate_retry_attempts,
+        _format_timeout(generate_retry_timeout),
+        review_retry_attempts,
+        _format_timeout(review_retry_timeout),
+        fix_retry_attempts,
+        _format_timeout(fix_retry_timeout),
+        output_retry_attempts,
+        _format_timeout(output_retry_timeout),
+    )
+
     try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-    except Exception as e:
-        logger.error(f"解析输入 JSON 失败: {e}")
+        cfg = _run_with_retry(
+            "阶段：加载配置",
+            lambda: load_config(args.config),
+            max_attempts=config_retry_attempts,
+            timeout=config_retry_timeout,
+            delay=retry_delay,
+            logger=logger,
+        )
+    except Exception as exc:
+        logger.error(f"[错误] {exc}")
         return 1
 
-    reconstructed = data.get("reconstructed_outline") or {}
-    if not reconstructed:
-        logger.error("输入 JSON 缺少 reconstructed_outline 字段")
-        return 1
-    subject = data.get("subject") or reconstructed.get("title") or "主题"
-
-    # 加载配置
-    try:
-        cfg = load_config(args.config)
-    except Exception as e:
-        logger.error(str(e))
-        return 1
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-        cfg["debug"] = True
-    if args.max_parallel:
-        cfg["max_parallel_requests"] = int(args.max_parallel)
-    if args.skip_content_review:
-        cfg["skip_content_review"] = True
-    if args.skip_fixes:
-        cfg["skip_fixes"] = True
-    if args.auto_apply_mode is not None:
-        cfg["auto_apply_mode"] = args.auto_apply_mode
-    if args.auto_apply_threshold_major is not None:
-        cfg["auto_apply_threshold_major"] = float(args.auto_apply_threshold_major)
-    if args.no_sanitize_mermaid:
-        cfg["sanitize_mermaid"] = False
-
-    # 构造 outline_struct 与 points
-    # 统一确定 topic_slug：优先 reconstructed.meta.topic_slug → 顶层 subject_slug → 回退 slugify(subject)
-    topic_slug_hint = None
-    try:
-        meta_top = reconstructed.get("meta") if isinstance(reconstructed, dict) else None
-        if isinstance(meta_top, dict):
-            tsm = meta_top.get("topic_slug")
-            if isinstance(tsm, str) and tsm.strip():
-                topic_slug_hint = tsm.strip()
-        if not topic_slug_hint:
-            tsm2 = data.get("subject_slug") if isinstance(data, dict) else None
-            if isinstance(tsm2, str) and tsm2.strip():
-                topic_slug_hint = tsm2.strip()
-    except Exception:
-        topic_slug_hint = None
-
-    outline_struct = _convert_reconstructed_to_outline_struct(subject, reconstructed, topic_slug_hint)
-    points = _points_from_struct(outline_struct)
-
-    topic_slug = outline_struct.get("meta", {}).get("topic_slug") or slugify(subject)
-    output_subdir = args.output_subdir or topic_slug
-
-    # Debug 文件输出
-    if args.debug:
+    def _load_input_bundle() -> Tuple[Path, Dict[str, Any]]:
+        p = Path(args.input)
+        if not p.exists():
+            raise FileNotFoundError(f"未找到输入文件: {p}")
         try:
-            dbg_dir = BASE_DIR / "output" / output_subdir
-            ensure_dir(dbg_dir)
-            dbg_path = dbg_dir / "log.txt"
-            fh = logging.FileHandler(dbg_path, encoding="utf-8")
-            fh.setLevel(logging.DEBUG)
-            fh.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
-            logging.getLogger().addHandler(fh)
-            logger.debug(f"调试日志文件: {dbg_path}")
-        except Exception as e:
-            logger.warning(f"创建调试日志文件失败: {e}")
+            data_obj = json.loads(p.read_text(encoding="utf-8"))
+        except Exception as exc_:
+            raise RuntimeError(f"解析输入 JSON 失败: {exc_}") from exc_
+        return p, data_obj
 
-    # 记录模型路由
-    def _resolve_llm_key_for_node(cfg: Dict[str, Any], node_key: str, subrole: Optional[str]) -> Optional[str]:
-        mapping = cfg.get("node_llm", {}) or {}
+    try:
+        _input_path, data = _run_with_retry(
+            "阶段：读取输入 JSON",
+            _load_input_bundle,
+            max_attempts=input_retry_attempts,
+            timeout=input_retry_timeout,
+            delay=retry_delay,
+            logger=logger,
+        )
+    except Exception as exc:
+        logger.error(f"[错误] {exc}")
+        return 1
+
+    def _prepare_stage() -> Tuple[WorkState, str, Dict[str, Any], str]:
+        reconstructed_local = data.get("reconstructed_outline") or {}
+        if not reconstructed_local:
+            raise ValueError("输入 JSON 缺少 reconstructed_outline 字段")
+        subject_local = data.get("subject") or reconstructed_local.get("title") or "主题"
+
+        if args.debug:
+            logging.getLogger().setLevel(logging.DEBUG)
+            cfg["debug"] = True
+        if args.max_parallel:
+            cfg["max_parallel_requests"] = int(args.max_parallel)
+        if args.skip_content_review:
+            cfg["skip_content_review"] = True
+        if args.skip_fixes:
+            cfg["skip_fixes"] = True
+        if args.auto_apply_mode is not None:
+            cfg["auto_apply_mode"] = args.auto_apply_mode
+        if args.auto_apply_threshold_major is not None:
+            cfg["auto_apply_threshold_major"] = float(args.auto_apply_threshold_major)
+        if args.no_sanitize_mermaid:
+            cfg["sanitize_mermaid"] = False
+
+        topic_slug_hint: Optional[str] = None
+        try:
+            meta_top = reconstructed_local.get("meta") if isinstance(reconstructed_local, dict) else None
+            if isinstance(meta_top, dict):
+                tsm = meta_top.get("topic_slug")
+                if isinstance(tsm, str) and tsm.strip():
+                    topic_slug_hint = tsm.strip()
+            if not topic_slug_hint and isinstance(data, dict):
+                tsm2 = data.get("subject_slug")
+                if isinstance(tsm2, str) and tsm2.strip():
+                    topic_slug_hint = tsm2.strip()
+        except Exception:
+            topic_slug_hint = None
+
+        outline_struct = _convert_reconstructed_to_outline_struct(subject_local, reconstructed_local, topic_slug_hint)
+        chapters = outline_struct.get("chapters") or []
+        if not chapters:
+            raise ValueError("未找到任何章节")
+        points = _points_from_struct(outline_struct)
+
+        topic_slug_local = outline_struct.get("meta", {}).get("topic_slug") or slugify(subject_local)
+        output_subdir = args.output_subdir or topic_slug_local
+
+        if args.debug:
+            try:
+                dbg_dir = BASE_DIR / "output" / output_subdir
+                ensure_dir(dbg_dir)
+                dbg_path = dbg_dir / "log.txt"
+                root_logger = logging.getLogger()
+                exists = any(
+                    isinstance(handler, logging.FileHandler) and getattr(handler, "baseFilename", "") == str(dbg_path)
+                    for handler in root_logger.handlers
+                )
+                if not exists:
+                    fh = logging.FileHandler(dbg_path, encoding="utf-8")
+                    fh.setLevel(logging.DEBUG)
+                    fh.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+                    root_logger.addHandler(fh)
+                    logger.debug(f"调试日志文件: {dbg_path}")
+            except Exception as exc:
+                logger.warning(f"创建调试日志文件失败: {exc}")
+
+        try:
+            lines: List[str] = []
+            lines.append(f"# {outline_struct.get('meta', {}).get('topic', subject_local)} (id: {topic_slug_local})")
+            for ci, ch in enumerate(chapters, start=1):
+                lines.append("")
+                lines.append(f"## 第{ci}章：{ch.get('title','')} (id: {ch.get('id')})")
+                for gi, gr in enumerate(ch.get("groups") or [], start=1):
+                    lines.append(f"### {gr.get('title','')} (id: {gr.get('id')})")
+                    for si, sec in enumerate((gr.get("sections") or []), start=1):
+                        lines.append(f"#### {sec.get('title','')} (id: {sec.get('id')})")
+            outline_md = "\n".join(lines) + "\n"
+        except Exception:
+            outline_md = ""
+
+        total = len(chapters)
+        indices = _parse_selected(args.selected_chapters, total)
+        selected_titles = [chapters[i - 1].get("title", "") for i in indices]
+        logger.info(f"选择章节: {indices} -> {[t or '未命名' for t in selected_titles]}")
+
+        state_local: WorkState = {
+            "topic": subject_local,
+            "topic_meta": {"lang": "zh"},
+            "topic_slug": topic_slug_local,
+            "config": cfg,
+            "output_subdir": output_subdir,
+            "outline_struct": outline_struct,
+            "outline_final_md": outline_md,
+            "points": points,
+            "selected_chapters": selected_titles,
+            "drafts": [],
+            "reviews": [],
+            "failures": [],
+        }
+        return state_local, subject_local, reconstructed_local, topic_slug_local
+
+    try:
+        state, subject, reconstructed, topic_slug = _run_with_retry(
+            "阶段：准备大纲与状态",
+            _prepare_stage,
+            max_attempts=prepare_retry_attempts,
+            timeout=prepare_retry_timeout,
+            delay=retry_delay,
+            logger=logger,
+        )
+    except Exception as exc:
+        logger.error(f"[错误] {exc}")
+        return 1
+
+    registry: Dict[str, Any] = {}
+    subject_type: str = state.get("subject_type", "")
+
+    def _classify_stage() -> Tuple[WorkState, Dict[str, Any], str]:
+        registry_local = build_llm_registry(cfg)
+        subject_type_local = (args.subject_type or "").strip().lower()
+        if not subject_type_local:
+            subject_type_json = None
+            try:
+                if isinstance(reconstructed, dict):
+                    meta_rec = reconstructed.get("meta")
+                    if isinstance(meta_rec, dict):
+                        st = meta_rec.get("subject_type")
+                        if isinstance(st, str):
+                            subject_type_json = st.strip().lower()
+                meta_top = data.get("meta") if isinstance(data, dict) else None
+                if not subject_type_json and isinstance(meta_top, dict):
+                    st = meta_top.get("subject_type")
+                    if isinstance(st, str):
+                        subject_type_json = st.strip().lower()
+            except Exception:
+                subject_type_json = None
+            if subject_type_json in {"tool", "theory"}:
+                subject_type_local = subject_type_json
+                logger.info(f"主题分类（来自输入 JSON）：{subject} => {subject_type_local}")
+        if not subject_type_local:
+            try:
+                if args.classify_llm_key and args.classify_llm_key in registry_local:
+                    llm_for_cls = registry_local[args.classify_llm_key]
+                else:
+                    llm_for_cls = select_llm_for_node(cfg, registry_local, "classify_subject")
+                subject_type_ai = asyncio.run(_classify_subject_async(llm_for_cls, subject))  # type: ignore[arg-type]
+                if subject_type_ai not in {"tool", "theory"}:
+                    subject_type_ai = "theory"
+                subject_type_local = subject_type_ai
+                logger.info(f"主题分类：{subject} => {subject_type_local}")
+            except Exception as exc:
+                logger.warning(f"主题分类失败，默认按 theory 处理：{exc}")
+                subject_type_local = "theory"
+        state_local = dict(state)
+        state_local["subject_type"] = subject_type_local
+        state_local["config"] = cfg
+        return state_local, registry_local, subject_type_local
+
+    try:
+        state, registry, subject_type = _run_with_retry(
+            "阶段：主题分类",
+            _classify_stage,
+            max_attempts=classify_retry_attempts,
+            timeout=classify_retry_timeout,
+            delay=retry_delay,
+            logger=logger,
+        )
+    except Exception as exc:
+        logger.error(f"[错误] {exc}")
+        return 1
+
+    def _resolve_llm_key_for_node(cfg_obj: Dict[str, Any], node_key: str, subrole: Optional[str]) -> Optional[str]:
+        mapping = cfg_obj.get("node_llm", {}) or {}
         def _get(nk: str, sr: Optional[str]) -> Optional[str]:
             if sr:
                 return mapping.get(f"{nk}.{sr}") or mapping.get(nk)
@@ -1552,131 +1912,137 @@ def main() -> int:
         if not name:
             name = mapping.get("default")
         return name
-    if args.debug:
-        llms = cfg.get("llms", {}) or {}
-        def _fmt_llm(k: str) -> str:
-            ent = llms.get(k) if isinstance(llms, dict) else None
+
+    default_llm = registry.get("default") or pick_llm(cfg, registry, None)
+    if default_llm is None:
+        logger.error("[错误] 未能从配置中解析默认 LLM")
+        return 1
+
+    def _pick_llm_for(node_key: str, subrole: Optional[str] = None):
+        chosen = select_llm_for_node(cfg, registry, node_key, subrole)
+        return chosen or default_llm
+
+    gen_llm = _pick_llm_for("generate_and_review_by_chapter", "generate")
+    rev_llm = _pick_llm_for("generate_and_review_by_chapter", "review")
+    if gen_llm is None or rev_llm is None:
+        logger.error("[错误] 未能获取生成/审查所需的 LLM 实例")
+        return 1
+    prop_llm = None
+    if not cfg.get("skip_fixes", False):
+        prop_llm = _pick_llm_for("propose_and_apply_fixes", "propose")
+        if prop_llm is None:
+            logger.error("[错误] 未能获取修复提案所需的 LLM 实例")
+            return 1
+
+    if cfg.get("debug"):
+        llms_cfg = cfg.get("llms", {}) or {}
+        def _fmt_llm(key: Optional[str]) -> str:
+            if not key:
+                return "<registry.default>"
+            ent = llms_cfg.get(key) if isinstance(llms_cfg, dict) else None
             if isinstance(ent, dict):
                 prov = ent.get("provider") or ent.get("api_provider") or cfg.get("api_provider")
                 model = ent.get("model") or cfg.get("model")
-                return f"{k} (provider={prov}, model={model})"
-            return f"{k} (provider={cfg.get('api_provider')}, model={cfg.get('model')})"
-        logger.debug(f"使用生成模型: {_fmt_llm(_resolve_llm_key_for_node(cfg, 'generate_and_review_by_chapter', 'generate') or '<registry.default>')}")
-        logger.debug(f"使用审查模型: {_fmt_llm(_resolve_llm_key_for_node(cfg, 'generate_and_review_by_chapter', 'review') or '<registry.default>')}")
-        logger.debug(f"使用修复模型: {_fmt_llm(_resolve_llm_key_for_node(cfg, 'propose_and_apply_fixes', 'propose') or '<registry.default>')}")
+                return f"{key} (provider={prov}, model={model})"
+            return f"{key} (provider={cfg.get('api_provider')}, model={cfg.get('model')})"
+        logger.debug(
+            "使用生成模型: %s",
+            _fmt_llm(_resolve_llm_key_for_node(cfg, "generate_and_review_by_chapter", "generate")),
+        )
+        logger.debug(
+            "使用审查模型: %s",
+            _fmt_llm(_resolve_llm_key_for_node(cfg, "generate_and_review_by_chapter", "review")),
+        )
+        logger.debug(
+            "使用修复模型: %s",
+            _fmt_llm(_resolve_llm_key_for_node(cfg, "propose_and_apply_fixes", "propose")),
+        )
 
-    # 渲染大纲 Markdown（供修复提示使用）
-    try:
-        # 复用 generator 脚本的渲染逻辑会引入更多依赖；故这里直接生成简要大纲 Markdown
-        lines: List[str] = []
-        lines.append(f"# {outline_struct.get('meta', {}).get('topic', subject)} (id: {topic_slug})")
-        chs = outline_struct.get("chapters") or []
-        for ci, ch in enumerate(chs, start=1):
-            lines.append("")
-            lines.append(f"## 第{ci}章：{ch.get('title','')} (id: {ch.get('id')})")
-            for gi, gr in enumerate(ch.get("groups") or [], start=1):
-                lines.append(f"### {gr.get('title','')} (id: {gr.get('id')})")
-                for si, sec in enumerate((gr.get("sections") or []), start=1):
-                    lines.append(f"#### {sec.get('title','')} (id: {sec.get('id')})")
-        outline_md = "\n".join(lines) + "\n"
-    except Exception:
-        outline_md = ""
-
-    # 章节选择
-    chapters = outline_struct.get("chapters") or []
-    total = len(chapters)
-    if total == 0:
-        logger.error("未找到任何章节")
-        return 1
-    indices = _parse_selected(args.selected_chapters, total)
-    selected_titles = [chapters[i-1].get("title", "") for i in indices]
-    logger.info(f"选择章节: {indices} -> {[t or '未命名' for t in selected_titles]}")
-
-    # 分类（优先 JSON -> CLI -> AI 分类）
-    subject_type = (args.subject_type or "").strip().lower()
-    if not subject_type:
-        # 1) 优先从输入 JSON 中读取（reconstructed_outline.meta.subject_type 或 顶层 meta.subject_type）
-        subject_type_json = None
-        try:
-            if isinstance(reconstructed, dict):
-                meta_rec = reconstructed.get("meta")
-                if isinstance(meta_rec, dict):
-                    st = meta_rec.get("subject_type")
-                    if isinstance(st, str):
-                        subject_type_json = st.strip().lower()
-            meta_top = data.get("meta") if isinstance(data, dict) else None
-            if not subject_type_json and isinstance(meta_top, dict):
-                st = meta_top.get("subject_type")
-                if isinstance(st, str):
-                    subject_type_json = st.strip().lower()
-        except Exception:
-            subject_type_json = None
-
-        if subject_type_json in {"tool", "theory"}:
-            subject_type = subject_type_json
-            logger.info(f"主题分类（来自输入 JSON）：{subject} => {subject_type}")
-
-    if not subject_type:
-        # 2) AI 分类
-        try:
-            registry = build_llm_registry(cfg)
-            llm_for_cls = None
-            if args.classify_llm_key and args.classify_llm_key in registry:
-                llm_for_cls = registry[args.classify_llm_key]
-            else:
-                llm_for_cls = select_llm_for_node(cfg, registry, "classify_subject")
-            subject_type = asyncio.run(_classify_subject_async(llm_for_cls, subject))  # type: ignore
-            if subject_type not in {"tool", "theory"}:
-                subject_type = "theory"
-            logger.info(f"主题分类：{subject} => {subject_type}")
-        except Exception as e:
-            logger.warning(f"主题分类失败，默认按 theory 处理：{e}")
-            subject_type = "theory"
-
-    # 初始状态
-    state: WorkState = {
-        "topic": subject,
-        "topic_meta": {"lang": "zh"},
-        "topic_slug": topic_slug,
-        "config": cfg,
-        "output_subdir": output_subdir,
-        "outline_struct": outline_struct,
-        "outline_final_md": outline_md,
-        "points": points,
-        "selected_chapters": selected_titles,
-        "subject_type": subject_type,
-    }
-
-    # 构建 LLM 实例（生成、审查、修复）
-    registry = build_llm_registry(cfg)
-    default_llm = registry.get("default") or pick_llm(cfg, registry, None)
-    def _pick(node: str, subrole: Optional[str] = None):
-        return select_llm_for_node(cfg, registry, node, subrole) or default_llm
-
-    gen_llm = _pick("generate_and_review_by_chapter", "generate")
-    rev_llm = _pick("generate_and_review_by_chapter", "review")
-    prop_llm = _pick("propose_and_apply_fixes", "propose")
-
-    # 运行
-    try:
-        if subject_type == "tool":
-            s1 = asyncio.run(generate_and_review_by_chapter_node_tool(state, gen_llm, rev_llm))
+    def _generate_stage() -> WorkState:
+        local_cfg = {**cfg, "skip_content_review": True}
+        local_state = {**state, "config": local_cfg}
+        if state.get("subject_type") == "tool":
+            result_state = asyncio.run(generate_and_review_by_chapter_node_tool(local_state, gen_llm, rev_llm))
         else:
-            s1 = asyncio.run(generate_and_review_by_chapter_node(state, gen_llm, rev_llm))
-    except Exception as e:
-        logger.error(f"生成/审查阶段失败: {e}")
-        return 1
+            result_state = asyncio.run(generate_and_review_by_chapter_node(local_state, gen_llm, rev_llm))
+        return {
+            **state,
+            "drafts": result_state.get("drafts", []),
+            "reviews": result_state.get("reviews", []),
+            "failures": result_state.get("failures", []),
+        }
 
     try:
-        s2 = asyncio.run(propose_and_apply_fixes_node(s1, prop_llm)) if not cfg.get("skip_fixes", False) else s1
-    except Exception as e:
-        logger.error(f"修复提案阶段失败: {e}")
+        state = _run_with_retry(
+            "阶段：内容生成",
+            _generate_stage,
+            max_attempts=generate_retry_attempts,
+            timeout=generate_retry_timeout,
+            delay=retry_delay,
+            logger=logger,
+        )
+    except Exception as exc:
+        logger.error(f"[错误] {exc}")
         return 1
 
-    s3 = save_and_publish_node(s2)
-    s4 = gather_and_report_node(s3)
+    if state.get("config", {}).get("skip_content_review", False):
+        logger.info("内容审查阶段：已根据配置跳过")
+    else:
+        def _review_stage() -> WorkState:
+            return asyncio.run(review_drafts_node(state, rev_llm))
 
-    report_md = s4.get("report_md", "")
+        try:
+            state = _run_with_retry(
+                "阶段：内容审查",
+                _review_stage,
+                max_attempts=review_retry_attempts,
+                timeout=review_retry_timeout,
+                delay=retry_delay,
+                logger=logger,
+            )
+        except Exception as exc:
+            logger.error(f"[错误] {exc}")
+            return 1
+
+    if state.get("config", {}).get("skip_fixes", False):
+        logger.info("修复提案阶段：已根据配置跳过")
+    else:
+        assert prop_llm is not None
+
+        def _fix_stage() -> WorkState:
+            return asyncio.run(propose_and_apply_fixes_node(state, prop_llm))
+
+        try:
+            state = _run_with_retry(
+                "阶段：修复提案",
+                _fix_stage,
+                max_attempts=fix_retry_attempts,
+                timeout=fix_retry_timeout,
+                delay=retry_delay,
+                logger=logger,
+            )
+        except Exception as exc:
+            logger.error(f"[错误] {exc}")
+            return 1
+
+    def _output_stage() -> WorkState:
+        after_save = save_and_publish_node(state)
+        return gather_and_report_node(after_save)
+
+    try:
+        state = _run_with_retry(
+            "阶段：保存与汇总",
+            _output_stage,
+            max_attempts=output_retry_attempts,
+            timeout=output_retry_timeout,
+            delay=retry_delay,
+            logger=logger,
+        )
+    except Exception as exc:
+        logger.error(f"[错误] {exc}")
+        return 1
+
+    report_md = state.get("report_md", "")
     if report_md:
         print("\n✅ 完成。报告如下：\n")
         print(report_md)
