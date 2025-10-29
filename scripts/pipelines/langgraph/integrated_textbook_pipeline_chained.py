@@ -8,6 +8,7 @@
 - reconstruct : 基于已有目录 JSON 执行大纲重构
 
 示例
+- 全流程跑 Python 教材推荐 + 目录抓取 + 大纲重构：
   python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
     --stage full \
     --subject "命令行操作" \
@@ -19,29 +20,22 @@
   - 只跑教材推荐+目录抓取：
     python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
     --stage toc \
-    --subject "Web媒体加密" \
+    --subject "命令行操作" \
     --top-n 3 \
     --print-prompt \
-    --expected-content "主流流媒体平台视频分发的加密方式，如何防止恶意下载" \
+    --expected-content "主希望知道命令行操作，包括但不限于SSH、操作系统、文件管理、git管理、docker等" \
     --log
 
   - 只跑大纲重构：先准备含 tocs 的 JSON，然后执行 
     python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
     --stage reconstruct \
-    --input output/textbook_tocs/web-media-encryption-20251022-185753.json \
-    --expected-content "主流流媒体平台视频分发的加密方式，如何防止恶意下载" \
-    --learning-style deep_preview \
+    --input output/textbook_tocs/command-line-operations-20251029-173653.json \
+    --expected-content "主希望知道命令行操作，包括但不限于SSH、操作系统、文件管理、git管理、docker等" \
+    --learning-style principles \
     --print-prompt \
+    --subject-type theory \
     --stream
 
-  全流程
-    python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
-    --stage full \
-    --subject "计算机网络原理" \
-    --top-n 3 \
-    --learning-style principles \
-    --expected-content "在学习的最后能够清楚VPN工作的原理" \
-    --print-prompt
 """
 
 from __future__ import annotations

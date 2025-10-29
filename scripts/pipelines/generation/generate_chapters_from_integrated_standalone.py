@@ -13,10 +13,15 @@
 
 用法示例：
   python scripts/pipelines/generation/generate_chapters_from_integrated_standalone.py \
-    --input output/integrated_pipeline/computer-network-principles-integrated-20251022-204538.json \
+    --input output/integrated_pipeline/command-line-operations-reconstructed-20251029-175456.json \
     --config config.json \
     --skip-content-review \
-    --selected-chapters 1 \
+    --debug
+
+  python scripts/pipelines/generation/generate_chapters_from_integrated_standalone.py \
+    --input output/reconstructed_outline/command-line-operations-reconstructed-20251029-175456.json \
+    --config config.json \
+    --skip-content-review \
     --debug
 
 调试模式：
