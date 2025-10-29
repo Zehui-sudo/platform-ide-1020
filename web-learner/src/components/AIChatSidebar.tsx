@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Plus, History, Bot, PanelRightClose, ArrowDown } from 'lucide-react';
+import { Send, Plus, History, Bot, PanelRightClose, ArrowDown, Copy, Check } from 'lucide-react';
 import { useLearningStore } from '@/store/learningStore';
 import type { AIProviderType } from '@/types';
 import {
@@ -48,6 +48,8 @@ export function AIChatSidebar({ toggleSidebar }: AIChatSidebarProps) {
   const autoScrollRef = useRef(true);
   const [scrollBtnFading, setScrollBtnFading] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (view !== 'chat') return;
@@ -130,6 +132,14 @@ export function AIChatSidebar({ toggleSidebar }: AIChatSidebarProps) {
     autoScrollRef.current = autoScroll;
   }, [autoScroll]);
 
+  useEffect(() => {
+    return () => {
+      if (copyFeedbackTimeoutRef.current) {
+        clearTimeout(copyFeedbackTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || !activeChatSessionId || sendingMessage) return;
 
@@ -143,6 +153,21 @@ export function AIChatSidebar({ toggleSidebar }: AIChatSidebarProps) {
     await sendChatMessage(message, context, useLearningStore.getState().currentPath?.subject);
   };
 
+
+  const handleCopyMessage = async (messageId: string, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(messageId);
+      if (copyFeedbackTimeoutRef.current) {
+        clearTimeout(copyFeedbackTimeoutRef.current);
+      }
+      copyFeedbackTimeoutRef.current = setTimeout(() => {
+        setCopiedMessageId(null);
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to copy message:', error);
+    }
+  };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -220,6 +245,24 @@ export function AIChatSidebar({ toggleSidebar }: AIChatSidebarProps) {
                           linkedSections={message.linkedSections}
                         />
                       </div>
+                      {message.sender === 'ai' && (
+                        <div className="flex justify-end px-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            onClick={() => handleCopyMessage(message.id, message.content)}
+                            aria-label="复制回复内容"
+                          >
+                            {copiedMessageId === message.id ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </div>
+                      )}
                       <div className={`text-xs text-muted-foreground px-1 ${
                         message.sender === 'user' ? 'text-right' : ''
                       }`}>
