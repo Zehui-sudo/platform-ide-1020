@@ -1,17 +1,26 @@
-import { OpenAIProvider } from './openai';
+import { OpenAIProvider, type OpenAIProviderOptions } from './openai';
 import { ChatRequest, ChatResponse } from '../types';
 
+const normalizeDeepSeekBase = (base?: string): string => {
+  const fallback = 'https://api.deepseek.com/v1';
+  if (!base) return fallback;
+  const trimmed = base.replace(/\/+$/, '');
+  if (trimmed.endsWith('/v1')) return trimmed;
+  return `${trimmed}/v1`;
+};
+
 export class DeepSeekProvider extends OpenAIProvider {
-  constructor() {
-    super();
-    // Override with DeepSeek specific settings
-    this.apiKey = process.env.DEEPSEEK_API_KEY || 'sk-8102e40a3ccb42b9a40ea6ab8467530b';
-    this.model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-    this.apiBase = process.env.DEEPSEEK_API_BASE || 'https://api.deepseek.com/v1';
+  constructor(options: OpenAIProviderOptions = {}) {
+    super({
+      apiKey: options.apiKey ?? process.env.DEEPSEEK_API_KEY ?? '',
+      model: options.model ?? process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
+      apiBase: normalizeDeepSeekBase(options.apiBase ?? process.env.DEEPSEEK_API_BASE),
+      fallbackModel: options.fallbackModel ?? null,
+    });
   }
 
   isConfigured(): boolean {
-    return !!process.env.DEEPSEEK_API_KEY;
+    return !!this.apiKey;
   }
 
   async chat(request: ChatRequest): Promise<ChatResponse | ReadableStream> {

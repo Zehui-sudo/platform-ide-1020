@@ -4,16 +4,25 @@ import { ChatMessage } from '@/types';
 type GeminiContentPart = { text: string };
 type GeminiContent = { role: 'user' | 'model'; parts: GeminiContentPart[] };
 
+export interface GeminiProviderOptions {
+  apiKey?: string;
+  model?: string;
+  apiBase?: string;
+}
+
 export class GeminiProvider extends AIProvider {
   private readonly apiKey: string;
   private readonly model: string;
   private readonly apiBase: string;
 
-  constructor() {
+  constructor(options: GeminiProviderOptions = {}) {
     super();
-    this.apiKey = process.env.GEMINI_API_KEY || '';
-    this.model = process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest';
-    this.apiBase = process.env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com/v1beta';
+    this.apiKey = options.apiKey ?? process.env.GEMINI_API_KEY ?? '';
+    this.model = options.model ?? process.env.GEMINI_MODEL ?? 'gemini-1.5-pro-latest';
+    this.apiBase =
+      options.apiBase ??
+      process.env.GEMINI_API_BASE ??
+      'https://generativelanguage.googleapis.com/v1beta';
   }
 
   isConfigured(): boolean {

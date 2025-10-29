@@ -53,11 +53,12 @@ export function ChatMessageRenderer({
           components={{
             p: ({ children }) => <p className="my-2 leading-relaxed">{children}</p>,
             pre: ({ children }) => <>{children}</>,
-            code: ({ inline, className, children, ...props }) => {
+            code: ({ className, children, ...props }) => {
               const match = /language-(\w+)/.exec(className || '');
               const codeContent = String(children).replace(/\n$/, '');
               // React Markdown passes an internal `node` prop we shouldn't forward
-              const { node, ...rest } = props as { node?: unknown };
+              const { node: _node, ...rest } = props as { node?: unknown };
+              void _node;
 
               if (match) {
                 return (

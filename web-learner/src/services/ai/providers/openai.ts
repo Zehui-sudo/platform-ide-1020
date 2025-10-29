@@ -1,19 +1,31 @@
 import { AIProvider, ChatRequest, ChatResponse } from '../types';
 import { ChatMessage } from '@/types';
 
+export interface OpenAIProviderOptions {
+  apiKey?: string;
+  model?: string;
+  apiBase?: string;
+  fallbackModel?: string | null;
+}
+
 export class OpenAIProvider extends AIProvider {
   protected apiKey: string;
   protected model: string;
   protected apiBase: string;
   protected fallbackModel: string | null;
 
-  constructor() {
+  constructor(options: OpenAIProviderOptions = {}) {
     super();
-    this.apiKey = process.env.OPENAI_API_KEY || '';
-    this.model = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
-    this.apiBase = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
-    const configuredFallback = process.env.OPENAI_FALLBACK_MODEL || 'gpt-4o-mini';
-    this.fallbackModel = this.model === configuredFallback ? null : configuredFallback;
+    this.apiKey = options.apiKey ?? process.env.OPENAI_API_KEY ?? '';
+    this.model = options.model ?? process.env.OPENAI_MODEL ?? 'gpt-3.5-turbo';
+    this.apiBase = options.apiBase ?? process.env.OPENAI_API_BASE ?? 'https://api.openai.com/v1';
+
+    const rawFallback =
+      options.fallbackModel !== undefined
+        ? options.fallbackModel
+        : process.env.OPENAI_FALLBACK_MODEL ?? 'gpt-4o-mini';
+    this.fallbackModel =
+      rawFallback === null || rawFallback === this.model ? null : rawFallback;
   }
 
   isConfigured(): boolean {
