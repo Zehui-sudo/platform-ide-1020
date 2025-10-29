@@ -178,7 +178,7 @@ def _prompt_from_catalog(key: str) -> str:
     try:
         return get_prompt(key)
     except Exception as exc:
-        raise RuntimeError(f"无法从 prompts/prompt_catalog.md 加载 Prompt '{key}': {exc}") from exc
+        raise RuntimeError(f"无法从 prompts/prompt_catalog_data.py 加载 Prompt '{key}': {exc}") from exc
 
 
 # ----------------------------
@@ -377,6 +377,12 @@ def _build_tool_content_prompt(
 ) -> str:
     lang = (language or "zh").strip().lower()
     template = _prompt_from_catalog("gen.tool_content")
+    if lang.startswith("zh"):
+        language_line = "【语言】中文"
+    elif lang.startswith("en"):
+        language_line = "【语言】English"
+    else:
+        language_line = f"【语言】{language}"
     mods = [m for m in (suggested_modules or []) if isinstance(m, str)]
     conts = [c for c in (suggested_contents or []) if isinstance(c, str)]
     design_obj = {
@@ -419,7 +425,8 @@ def _build_tool_content_prompt(
         topic=topic,
         path_block=path_block,
         design_json=json.dumps(design_obj, ensure_ascii=False, indent=2),
-        context_block=context_block
+        context_block=context_block,
+        language_line=language_line,
     )
     return prompt.strip() + "\n"
 

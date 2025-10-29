@@ -64,7 +64,7 @@ CONFIG_PATH = BASE_DIR / "config.json"
 
 
 def _prompt_from_catalog(key: str) -> str:
-    """严格从 prompt_catalog.md 加载，失败则抛出异常。"""
+    """严格从 prompt_catalog_data.py 加载，失败则抛出异常。"""
     try:
         # 确保 prompts 包可被导入
         _project_root = Path(__file__).resolve().parents[3]
@@ -74,7 +74,7 @@ def _prompt_from_catalog(key: str) -> str:
         return get_prompt(key)
     except (ImportError, KeyError, FileNotFoundError) as e:
         raise RuntimeError(
-            f"无法从 prompt_catalog.md 加载 '{key}'。请确保 prompts/prompt_loader.py 和 prompts/prompt_catalog.md 文件存在且配置正确。"
+            f"无法加载 Prompt '{key}'。请确认 prompts/prompt_loader.py 和 prompts/prompt_catalog_data.py 配置正确并可被导入。"
         ) from e
 
 
