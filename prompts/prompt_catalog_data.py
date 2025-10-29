@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """Prompt catalog stored as explicit Python string constants."""
 
-GEN_CLASSIFY_SUBJECT = '''You are a curriculum designer's assistant. Your task is to classify a given subject into one of two categories: "theory" or "tool".
+# GEN_CLASSIFY_SUBJECT = '''You are a curriculum designer's assistant. Your task is to classify a given subject into one of two categories: "theory" or "tool".
 
-Category Definitions:
-* Theory: a field of knowledge, a discipline, or a conceptual framework focused on principles and the "why".
-* Tool: a specific language, library, framework, or technology focused on the "how-to".
+# Category Definitions:
+# * Theory: a field of knowledge, a discipline, or a conceptual framework focused on principles and the "why".
+# * Tool: a specific language, library, framework, or technology focused on the "how-to".
 
-Task: Classify the following subject. Respond with a single word: theory or tool.
+# Task: Classify the following subject. Respond with a single word: theory or tool.
 
-Subject: "{subject}"'''
+# Subject: "{subject}"'''
 
 GEN_FIX_PROPOSAL = '''你是严谨的技术编辑与作者。基于以下上下文，提出修复提案并给出修订后完整内容。
 
@@ -226,7 +226,7 @@ RECONSTRUCT_THEORIES_DEEP_PREVIEW = '''你是一位顶尖的课程设计师和�
 **【输出范例 (JSON)】**
 ```json
 {
-    "title": "Natural Language Processing: From Foundations to Large Models",
+    "title": "自然语言处理: 从基础到大语言模型",
     "id": "cs-nlp-301",
     "groups": [
         {
@@ -397,7 +397,7 @@ RECONSTRUCT_THEORIES_PRINCIPLES = '''你是一位顶尖的课程设计师和该�
 **【输出范例 (JSON)】**
 ```json
 {
-    "title": "Natural Language Processing: From Foundations to Large Models",
+    "title": "自然语言处理: 从基础到大语言模型",
     "id": "cs-nlp-301",
     "groups": [
         {
@@ -511,8 +511,130 @@ RECONSTRUCT_THEORIES_PRINCIPLES = '''你是一位顶尖的课程设计师和该�
     ]
 }
 ```
+'''
 
-### reconstruct.tools'''
+RECONSTRUCT_TOOLS = '''
+你是一位顶尖的课程设计师和该领域的专家。你的任务是为一个具体的**工具/技术**主题设计一个**结构化的学习目录**，目标读者是**本科大三学生**，具有一定编程基础但未接触过该工具。
+
+【主题】[subject]
+
+【总体目标】
+帮助学习者以**实操为导向**快速入门，同时理解背后的关键概念与最佳实践，能够独立完成典型任务，并避免常见误区。
+
+【编排原则】
+1. 自底向上的结构化学习：从核心语法/基础概念→常见任务→进阶能力→综合项目；不需要包含环境安装和调试的内容。
+2. 每个小节应围绕一个明确的目标或能力点；
+3. 强调“为什么”和“怎么做”的结合，避免只给命令或 API 罗列；
+4. 对比与权衡：在需要时给出常见替代方案、优劣与适用场景；
+5. 提供最小但可运行的示例，避免伪代码；
+6. 框架或工具链时，加入“常见坑与排错指南”。
+
+【输出格式要求】
+输出是一个 JSON 对象，包含多章（groups），每章内多个知识点（sections），并且为每个知识点补充元数据：
+- `structure_type: "pipeline" | "toolbox"`
+- `relation_to_previous: "builds_on" | "tool_in_toolbox" | "alternative_to" | "deep_dive_into" | "first_in_sequence"`
+- `primary_goal`
+- `suggested_modules`
+- `suggested_contents`
+
+请仅输出 JSON，不要任何解释性文字。输出语言为 中文
+
+**【输出范例 (JSON)】**
+```json
+{
+  "title": "Python入门",
+  "id": "python",
+  "groups": [
+    {
+      "title": "第一章：Python 基础与核心概念",
+      "id": "py-ch-1",
+      "structure_type": "pipeline",
+      "sections": [
+        {
+          "title": "1.1 变量、数据类型与运算符",
+          "id": "py-sec-1-1",
+          "relation_to_previous": "first_in_sequence",
+          "primary_goal": "掌握 Python 中最基本的构建块：如何存储数据（变量）、数据的种类（类型）以及如何对数据进行操作（运算符）。",
+          "suggested_modules": [
+            "code_example",
+            "common_mistake_warning"
+          ],
+          "suggested_contents": [
+            "变量赋值",
+            "基本数据类型: int, float, bool, None",
+            "算术运算符 (+, -, *, /, //, %, **)",
+            "比较运算符 (==, !=, >, <, >=, <=)",
+            "逻辑运算符 (and, or, not)",
+            "类型检查 type()"
+          ]
+        },
+        {
+          "title": "1.2 字符串操作",
+          "id": "py-sec-1-2",
+          "relation_to_previous": "builds_on",
+          "primary_goal": "学习处理文本数据的核心技能，包括创建、格式化、切片和使用内置方法操作字符串。",
+          "suggested_modules": [
+            "code_example",
+            "comparison",
+            "common_mistake_warning"
+          ],
+          "suggested_contents": [
+            "字符串创建 (单引号, 双引号, 三引号)",
+            "f-string 格式化",
+            "字符串索引与切片 [start:stop:step]",
+            "常用方法: .strip(), .split(), .join(), .upper(), .lower(), .replace()",
+            "字符串拼接与重复"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "第二章：核心数据结构",
+      "id": "py-ch-2",
+      "structure_type": "pipeline",
+      "sections": [
+        {
+          "title": "2.1 列表 (List) 与元组 (Tuple)",
+          "id": "py-sec-2-1",
+          "relation_to_previous": "builds_on",
+          "primary_goal": "掌握 Python 中最常用的有序集合：可变的列表和不可变的元组，以及它们的核心操作。",
+          "suggested_modules": [
+            "code_example",
+            "comparison",
+            "common_mistake_warning"
+          ],
+          "suggested_contents": [
+            "列表的创建、索引、切片",
+            "列表修改: .append(), .insert(), .remove(), del",
+            "列表排序: .sort(), sorted()",
+            "元组的创建与拆包",
+            "列表与元组的适用场景对比"
+          ]
+        },
+        {
+          "title": "2.2 字典 (Dictionary) 与集合 (Set)",
+          "id": "py-sec-2-2",
+          "relation_to_previous": "builds_on",
+          "primary_goal": "学习使用键值对（字典）和无重复元素集合（集合）来高效地存储和检索数据。",
+          "suggested_modules": [
+            "code_example",
+            "comparison",
+            "mermaid_diagram"
+          ],
+          "suggested_contents": [
+            "字典的创建与操作 (键值对)",
+            "字典访问: [], .get()",
+            "字典遍历: .keys(), .values(), .items()",
+            "集合的创建与基本操作",
+            "集合运算: 并集, 交集, 差集"
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+'''
 
 REVIEW_DEFAULT = '''你是资深的技术编辑，你的任务是审查下面的初稿，并以JSON格式提供具体的、可操作的反馈。
 
@@ -590,7 +712,7 @@ Slug: bazi-divination
 只输出 slug，不要任何解释或标点：'''
 
 PROMPTS = {
-    'gen.classify_subject': GEN_CLASSIFY_SUBJECT,
+    # 'gen.classify_subject': GEN_CLASSIFY_SUBJECT,
     'gen.fix_proposal': GEN_FIX_PROPOSAL,
     'gen.theory_content': GEN_THEORY_CONTENT,
     'gen.tool_content': GEN_TOOL_CONTENT,
@@ -599,6 +721,7 @@ PROMPTS = {
     'reconstruct.classify_subject': RECONSTRUCT_CLASSIFY_SUBJECT,
     'reconstruct.theories.deep_preview': RECONSTRUCT_THEORIES_DEEP_PREVIEW,
     'reconstruct.theories.principles': RECONSTRUCT_THEORIES_PRINCIPLES,
+    'reconstruct.tools': RECONSTRUCT_TOOLS,
     'review.default': REVIEW_DEFAULT,
     'toc.recommend': TOC_RECOMMEND,
     'toc.slug': TOC_SLUG,

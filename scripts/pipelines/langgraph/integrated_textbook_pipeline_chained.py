@@ -33,7 +33,7 @@
     --expected-content "主希望知道命令行操作，包括但不限于SSH、操作系统、文件管理、git管理、docker等" \
     --learning-style principles \
     --print-prompt \
-    --subject-type theory \
+    --subject-type tool \
     --stream
 
 """
