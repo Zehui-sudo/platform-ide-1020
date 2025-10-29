@@ -50,6 +50,7 @@ export function AIChatSidebar({ toggleSidebar }: AIChatSidebarProps) {
   const [atBottom, setAtBottom] = useState(true);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [hoverPositions, setHoverPositions] = useState<Record<string, 'top' | 'bottom'>>({});
 
   useEffect(() => {
     if (view !== 'chat') return;
@@ -169,6 +170,30 @@ export function AIChatSidebar({ toggleSidebar }: AIChatSidebarProps) {
     }
   };
 
+  const handleBubbleMouseMove = (messageId: string, event: React.MouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.height < 500) {
+      setHoverPositions(prev => {
+        if (prev[messageId] === 'top' || prev[messageId] === undefined) return prev;
+        return { ...prev, [messageId]: 'top' };
+      });
+      return;
+    }
+    const isTopHalf = event.clientY - rect.top < rect.height / 2;
+    const nextPosition: 'top' | 'bottom' = isTopHalf ? 'top' : 'bottom';
+    setHoverPositions(prev => {
+      if (prev[messageId] === nextPosition) return prev;
+      return { ...prev, [messageId]: nextPosition };
+    });
+  };
+
+  const handleBubbleMouseLeave = (messageId: string) => {
+    setHoverPositions(prev => {
+      if (prev[messageId] === 'top' || prev[messageId] === undefined) return prev;
+      return { ...prev, [messageId]: 'top' };
+    });
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -222,7 +247,7 @@ export function AIChatSidebar({ toggleSidebar }: AIChatSidebarProps) {
           <div className="flex-1 overflow-hidden relative">
             <ScrollArea className="h-full" ref={scrollAreaRef}>
               <div className="p-3 space-y-3" ref={messageContainerRef}>
-                {messages.map((message) => (
+                {messages.map((message, index) => (
                   <div key={message.id} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className="w-full max-w-[95%] min-w-0 space-y-1 overflow-hidden">
                       {message.contextReference && message.sender === 'user' && (
@@ -234,26 +259,36 @@ export function AIChatSidebar({ toggleSidebar }: AIChatSidebarProps) {
                         </div>
                       )}
                       <div
-                        className={`rounded-lg px-3 py-2 text-sm min-w-0 break-words overflow-hidden ${
-                          message.sender === 'user'
-                            ? 'bg-primary text-primary-foreground ml-auto'
-                            : 'bg-muted'
+                        className={`relative group inline-block ${
+                          message.sender === 'user' ? 'ml-auto' : ''
                         }`}
+                        onMouseMove={(event) => handleBubbleMouseMove(message.id, event)}
+                        onMouseLeave={() => handleBubbleMouseLeave(message.id)}
                       >
-                        <ChatMessageRenderer 
-                          content={message.content}
-                          linkedSections={message.linkedSections}
-                        />
-                      </div>
-                      {message.sender === 'ai' && (
-                        <div className="flex justify-end px-1">
+                        <div
+                          className={`rounded-lg px-3 py-2 text-sm min-w-0 break-words overflow-hidden ${
+                            message.sender === 'user'
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-muted'
+                          }`}
+                        >
+                          <ChatMessageRenderer 
+                            content={message.content}
+                            linkedSections={message.linkedSections}
+                          />
+                        </div>
+                        {index !== 0 && (
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            className={`absolute right-1.5 h-7 w-7 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto bg-background/70 backdrop-blur-sm ${
+                              (hoverPositions[message.id] ?? 'top') === 'bottom'
+                                ? 'bottom-1.5 top-auto'
+                                : 'top-1.5 bottom-auto'
+                            }`}
                             onClick={() => handleCopyMessage(message.id, message.content)}
-                            aria-label="复制回复内容"
+                            aria-label="复制消息内容"
                           >
                             {copiedMessageId === message.id ? (
                               <Check className="h-3.5 w-3.5" />
@@ -261,8 +296,8 @@ export function AIChatSidebar({ toggleSidebar }: AIChatSidebarProps) {
                               <Copy className="h-3.5 w-3.5" />
                             )}
                           </Button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                       <div className={`text-xs text-muted-foreground px-1 ${
                         message.sender === 'user' ? 'text-right' : ''
                       }`}>
