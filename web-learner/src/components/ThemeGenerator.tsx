@@ -30,6 +30,108 @@ type OutlineRenderableGroup = {
   sections?: OutlineRenderableSection[];
 };
 
+const normalizeTextField = (
+  source: Record<string, unknown>,
+  keys: string[],
+): string | undefined => {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+    if (typeof value === 'number') {
+      return String(value);
+    }
+  }
+  return undefined;
+};
+
+const normalizeSection = (
+  section: unknown,
+  groupIndex: number,
+  sectionIndex: number,
+): OutlineRenderableSection => {
+  const fallbackTitle = `节 ${groupIndex + 1}.${sectionIndex + 1}`;
+  const fallbackId = `g${groupIndex}-s${sectionIndex}`;
+  if (typeof section === 'string') {
+    return { id: fallbackId, title: section };
+  }
+  if (section && typeof section === 'object') {
+    const record = section as Record<string, unknown>;
+    const title =
+      normalizeTextField(record, ['title', 'section_title', 'topic_title', 'name', 'heading']) ||
+      fallbackTitle;
+    const id =
+      normalizeTextField(record, ['id', 'section_id', 'slug', 'section_slug']) ||
+      fallbackId;
+    return { id, title };
+  }
+  return { id: fallbackId, title: fallbackTitle };
+};
+
+const normalizeGroup = (group: unknown, groupIndex: number): OutlineRenderableGroup => {
+  const fallbackTitle = `第${groupIndex + 1}章`;
+  const fallbackId = `g${groupIndex}`;
+  if (typeof group === 'string') {
+    return { id: fallbackId, title: group };
+  }
+  if (group && typeof group === 'object') {
+    const record = group as Record<string, unknown>;
+    const title =
+      normalizeTextField(record, ['title', 'group_title', 'chapter_title', 'chapter', 'name']) ||
+      fallbackTitle;
+    const id =
+      normalizeTextField(record, ['id', 'group_id', 'slug', 'group_slug']) ||
+      fallbackId;
+    const sectionsRaw = Array.isArray(record.sections) ? record.sections : [];
+    const sections = sectionsRaw.map((section, sectionIndex) =>
+      normalizeSection(section, groupIndex, sectionIndex),
+    );
+    return { id, title, sections };
+  }
+  return { id: fallbackId, title: fallbackTitle };
+};
+
+const normalizeOutlineGroups = (outline: unknown): OutlineRenderableGroup[] => {
+  if (!outline || typeof outline !== 'object') {
+    return [];
+  }
+
+  const record = outline as Record<string, unknown>;
+  const groups = Array.isArray(record.groups) ? record.groups : null;
+  const chapters = Array.isArray(record.chapters) ? record.chapters : null;
+  const sections = Array.isArray(record.sections) ? record.sections : null;
+
+  if (groups && groups.length > 0) {
+    return groups.map((group, index) => normalizeGroup(group, index));
+  }
+
+  if (chapters && chapters.length > 0) {
+    return chapters.map((group, index) => normalizeGroup(group, index));
+  }
+
+  if (sections && sections.length > 0) {
+    const outlineTitle = normalizeTextField(record, ['title', 'name']) || '目录';
+    let outlineId = outlineTitle;
+    const meta = record.meta;
+    if (meta && typeof meta === 'object') {
+      const metaId = normalizeTextField(meta as Record<string, unknown>, ['topic_slug', 'subject_slug']);
+      if (metaId) {
+        outlineId = metaId;
+      }
+    }
+    return [
+      {
+        id: outlineId,
+        title: outlineTitle,
+        sections: sections.map((section, index) => normalizeSection(section, 0, index)),
+      },
+    ];
+  }
+
+  return [];
+};
+
 // Rehydrate on initial load
 let rehydrated = false;
 
@@ -414,26 +516,7 @@ const OutlineReadyView = () => {
   const { outlineResult, startContentGeneration, reset } = useThemeGeneratorStore();
 
   const outline = outlineResult?.reconstructed_outline ?? null;
-  const groups: OutlineRenderableGroup[] = (() => {
-    if (!outline) {
-      return [];
-    }
-
-    if (Array.isArray(outline.groups) && outline.groups.length > 0) {
-      return outline.groups;
-    }
-
-    if (Array.isArray(outline.chapters) && outline.chapters.length > 0) {
-      return outline.chapters;
-    }
-
-    if (Array.isArray(outline.sections)) {
-      return [{ title: outline.title ?? '目录', sections: outline.sections }];
-    }
-
-    return [];
-  })();
-
+  const groups: OutlineRenderableGroup[] = normalizeOutlineGroups(outline);
   const title = outline?.title || '生成目录';
 
   return (

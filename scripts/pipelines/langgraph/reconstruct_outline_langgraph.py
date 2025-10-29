@@ -182,7 +182,7 @@ def classify_subject(subject: str, llm: LLMCaller) -> str:
     try:
         tmpl = _prompt_from_catalog("reconstruct.classify_subject")
         prompt = tmpl.replace("[subject]", subject)
-        resp = llm.complete(prompt, max_tokens=10)
+        resp = llm.complete(prompt, max_tokens=8096)
     except Exception as e:
         return f"error: classify failed: {e}"
     ans = (resp or "").strip().strip('`\"\'').lower()
@@ -276,6 +276,7 @@ def run_reconstruct_outline(
         final_subject_type = subject_type.strip().lower()
     else:
         final_subject_type = classify_subject(subject, classifier)
+        logger.info("主题分类: %s → %s", subject, final_subject_type)
         if final_subject_type not in ("theory", "tool"):
             raise RuntimeError(f"主题分类失败: {final_subject_type}")
     logger.info("主题分类: %s → %s", subject, final_subject_type)

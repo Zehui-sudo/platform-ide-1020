@@ -11,7 +11,7 @@
   python3 scripts/pipelines/langgraph/integrated_textbook_pipeline_chained.py \
     --stage full \
     --subject "命令行操作" \
-    --top-n 3 \
+    --top-n 2 \
     --learning-style deep_preview \
     --expected-content "主希望知道命令行操作，包括但不限于SSH、操作系统、文件管理、git管理、docker等" \
     --print-prompt
