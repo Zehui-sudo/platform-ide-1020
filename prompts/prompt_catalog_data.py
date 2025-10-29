@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """Prompt catalog stored as explicit Python string constants."""
 
-# GEN_CLASSIFY_SUBJECT = '''You are a curriculum designer's assistant. Your task is to classify a given subject into one of two categories: "theory" or "tool".
+GEN_CLASSIFY_SUBJECT = '''You are a curriculum designer's assistant. Your task is to classify a given subject into one of two categories: "theory" or "tool".
 
-# Category Definitions:
-# * Theory: a field of knowledge, a discipline, or a conceptual framework focused on principles and the "why".
-# * Tool: a specific language, library, framework, or technology focused on the "how-to".
+Category Definitions:
+* Theory: a field of knowledge, a discipline, or a conceptual framework focused on principles and the "why".
+* Tool: a specific language, library, framework, or technology focused on the "how-to".
 
-# Task: Classify the following subject. Respond with a single word: theory or tool.
+Task: Classify the following subject. Respond with a single word: theory or tool.
 
-# Subject: "{subject}"'''
+Subject: "{subject}"'''
 
 GEN_FIX_PROPOSAL = '''你是严谨的技术编辑与作者。基于以下上下文，提出修复提案并给出修订后完整内容。
 
@@ -712,7 +712,7 @@ Slug: bazi-divination
 只输出 slug，不要任何解释或标点：'''
 
 PROMPTS = {
-    # 'gen.classify_subject': GEN_CLASSIFY_SUBJECT,
+    'gen.classify_subject': GEN_CLASSIFY_SUBJECT,
     'gen.fix_proposal': GEN_FIX_PROPOSAL,
     'gen.theory_content': GEN_THEORY_CONTENT,
     'gen.tool_content': GEN_TOOL_CONTENT,
