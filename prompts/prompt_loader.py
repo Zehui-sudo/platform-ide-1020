@@ -32,13 +32,13 @@ def _load_prompts_from_catalog() -> Dict[str, str]:
     lines = content.splitlines()
     current_key: Optional[str] = None
     current_lines: list[str] = []
-    inside_block = False
+    fence_stack: list[str] = []
 
     for raw_line in lines:
         line = raw_line.rstrip('\n')
         stripped = line.strip()
 
-        if not inside_block and stripped.startswith('### '):
+        if not fence_stack and stripped.startswith('### '):
             current_key = stripped[4:].strip()
             current_lines = []
             continue
@@ -46,22 +46,41 @@ def _load_prompts_from_catalog() -> Dict[str, str]:
         if current_key is None:
             continue
 
-        if not inside_block:
+        if not fence_stack:
             if stripped.startswith('```'):
-                # Start of the fenced prompt content (language marker optional).
-                inside_block = True
+                marker = stripped[3:].strip()
+                fence_stack.append(marker)
             continue
 
-        # We are inside a fenced code block for the current prompt key.
-        if stripped.startswith('```') and stripped.strip('`').strip() == '':
-            # Closing fence encountered; finalize prompt.
-            prompts[current_key] = "\n".join(current_lines)
-            current_key = None
-            current_lines = []
-            inside_block = False
+        if stripped.startswith('```'):
+            marker = stripped[3:].strip()
+            if marker and fence_stack and marker == fence_stack[-1]:
+                fence_stack.pop()
+                if fence_stack:
+                    current_lines.append(raw_line)
+                else:
+                    prompts[current_key] = "\n".join(current_lines)
+                    current_key = None
+                    current_lines = []
+                continue
+            if marker == '':
+                if fence_stack:
+                    fence_stack.pop()
+                if fence_stack:
+                    current_lines.append(raw_line)
+                else:
+                    prompts[current_key] = "\n".join(current_lines)
+                    current_key = None
+                    current_lines = []
+                continue
+            fence_stack.append(marker or '')
+            current_lines.append(raw_line)
             continue
 
         current_lines.append(raw_line)
+
+    if current_key is not None and current_lines:
+        prompts[current_key] = "\n".join(current_lines)
 
     _cache = prompts
     return _cache
