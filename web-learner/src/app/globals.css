@@ -161,3 +161,23 @@
     letter-spacing: var(--tracking-normal);
   }
 }
+
+@keyframes ai-cursor-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  99% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@layer utilities {
+  .animate-ai-cursor {
+    animation: ai-cursor-blink 1s steps(2, start) infinite;
+  }
+}
