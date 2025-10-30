@@ -120,7 +120,7 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
   ```
 - **低内存提示**：如果构建阶段仍出现 OOM，可暂时设置 `NODE_OPTIONS=--max-old-space-size=512` 减少单进程占用：
   ```bash
-  NODE_OPTIONS=--max-old-space-size=512 pnpm --filter @platform-ide/web-learner build
+  NODE_OPTIONS=--max-old-space-size=2048 pnpm --filter @platform-ide/web-learner build
   ```
 - **验证**：`web-learner/.next` 目录出现；命令输出无错误。
 
