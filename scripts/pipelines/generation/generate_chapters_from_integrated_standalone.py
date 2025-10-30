@@ -523,41 +523,102 @@ async def _classify_subject_async(llm, subject: str) -> str:
     return "theory"
 
 
-async def _gen_one_point(llm, prompt: str, retries: int, delay: int, debug: bool = False, tag: str = "generate") -> str:
+async def _gen_one_point(
+    llm,
+    prompt: str,
+    retries: int,
+    delay: int,
+    *,
+    timeout: Optional[float] = None,
+    debug: bool = False,
+    tag: str = "generate",
+) -> str:
+    attempts = max(1, retries)
+    delay_seconds = max(1, int(delay))
+    try:
+        timeout_value: Optional[float] = float(timeout) if timeout is not None else None
+        if timeout_value is not None and timeout_value <= 0:
+            timeout_value = None
+    except (TypeError, ValueError):
+        timeout_value = None
+
     last = ""
-    for _ in range(max(1, retries)):
+    for attempt in range(1, attempts + 1):
         try:
             if debug:
-                logging.getLogger(__name__).debug("\n==== LLM Prompt [%s] BEGIN ====\n%s\n==== LLM Prompt [%s] END ====\n", tag, prompt, tag)
-            last = await llm.ainvoke(prompt)
+                logging.getLogger(__name__).debug(
+                    "\n==== LLM Prompt [%s] BEGIN ====\n%s\n==== LLM Prompt [%s] END ====\n",
+                    tag,
+                    prompt,
+                    tag,
+                )
+            coro = llm.ainvoke(prompt)
+            last = await (asyncio.wait_for(coro, timeout_value) if timeout_value else coro)
             if last:
                 return last
+            logging.getLogger(__name__).warning("生成调用返回空结果 [%s] 第 %d/%d 次", tag, attempt, attempts)
+        except asyncio.TimeoutError:
+            logging.getLogger(__name__).warning("生成调用超时 [%s] 第 %d/%d 次 (%.1fs)", tag, attempt, attempts, timeout_value or -1)
         except Exception as e:
-            logging.getLogger(__name__).error(f"生成调用失败: {e}")
-        await asyncio.sleep(max(1, delay))
+            logging.getLogger(__name__).error("生成调用失败 [%s] 第 %d/%d 次: %s", tag, attempt, attempts, e)
+        if attempt < attempts:
+            await asyncio.sleep(delay_seconds)
     return last
 
 
-async def _review_one_point_with_context(llm, point_id: str, content_md: str, peer_points: List[Dict[str, str]], debug: bool = False) -> Dict[str, Any]:
+async def _review_one_point_with_context(
+    llm,
+    point_id: str,
+    content_md: str,
+    peer_points: List[Dict[str, str]],
+    *,
+    retries: int = 1,
+    delay: int = 10,
+    timeout: Optional[float] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
     review_prompt_template = _prompt_from_catalog('review.default')
     peers_lines = "\n".join([f"- {p.get('id', '')}: {p.get('title', '')}" for p in peer_points])
     prompt = review_prompt_template.format(point_id=point_id, peers_lines=peers_lines if peers_lines else '(无)', content_md=content_md)
-    if debug:
-        logging.getLogger(__name__).debug("\n==== LLM Prompt [review] BEGIN ====\n%s\n==== LLM Prompt [review] END ====\n", prompt)
+    attempts = max(1, retries)
+    delay_seconds = max(1, int(delay))
     try:
-        text = await llm.ainvoke(prompt)
-        obj = try_parse_json_object(text)
-        if obj:
-            obj.setdefault("file_id", point_id)
-            return obj
-    except Exception as e:
-        logging.getLogger(__name__).error(f"带上下文审查失败: {e}")
+        timeout_value: Optional[float] = float(timeout) if timeout is not None else None
+        if timeout_value is not None and timeout_value <= 0:
+            timeout_value = None
+    except (TypeError, ValueError):
+        timeout_value = None
+
+    last_issue: Optional[str] = None
+    for attempt in range(1, attempts + 1):
+        try:
+            if debug:
+                logging.getLogger(__name__).debug(
+                    "\n==== LLM Prompt [review] BEGIN ====\n%s\n==== LLM Prompt [review] END ====\n",
+                    prompt,
+                )
+            coro = llm.ainvoke(prompt)
+            text = await (asyncio.wait_for(coro, timeout_value) if timeout_value else coro)
+            obj = try_parse_json_object(text)
+            if obj:
+                obj.setdefault("file_id", point_id)
+                return obj
+            last_issue = "解析失败或输出为空"
+            logging.getLogger(__name__).warning("带上下文审查输出无法解析: %s (第 %d/%d 次)", point_id, attempt, attempts)
+        except asyncio.TimeoutError:
+            last_issue = f"timeout@{timeout_value or -1:.1f}s"
+            logging.getLogger(__name__).warning("带上下文审查超时: %s (第 %d/%d 次, %.1fs)", point_id, attempt, attempts, timeout_value or -1)
+        except Exception as e:
+            last_issue = str(e)
+            logging.getLogger(__name__).error("带上下文审查失败: %s (第 %d/%d 次) %s", point_id, attempt, attempts, e)
+        if attempt < attempts:
+            await asyncio.sleep(delay_seconds)
     return {
         "file_id": point_id,
         "is_perfect": False,
         "issues": [{
             "severity": "major",
-            "description": "审查节点执行或JSON解析失败。",
+            "description": f"审查节点执行或JSON解析失败: {last_issue or '未知原因'}。",
             "suggestion": "请检查上游内容或审查模型的输出是否稳定。"
         }]
     }
@@ -673,10 +734,23 @@ async def _propose_fix(
 # ----------------------------
 
 async def generate_and_review_by_chapter_node(state: WorkState, llm_generate, llm_review) -> WorkState:
-    cfg = state.get("config", {})
+    cfg = state.get("config", {}) or {}
     max_parallel = int(cfg.get("max_parallel_requests", 8))
-    retries = int(cfg.get("retry_times", 3))
-    delay = int(cfg.get("retry_delay", 10))
+    base_retry_times = int(cfg.get("retry_times", 3))
+    generate_retries = max(1, int(cfg.get("generate_point_retries", base_retry_times)))
+    generate_delay = max(1, int(cfg.get("retry_delay", 10)))
+    review_point_retries = max(1, int(cfg.get("review_point_retries", cfg.get("review_retry_times", base_retry_times))))
+    review_delay = max(1, int(cfg.get("review_retry_delay", cfg.get("retry_delay", 10))))
+
+    def _parse_timeout(value: Any) -> Optional[float]:
+        try:
+            t = float(value)
+            return t if t > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    generate_timeout = _parse_timeout(cfg.get("generate_point_timeout"))
+    review_timeout = _parse_timeout(cfg.get("review_point_timeout"))
     sem = asyncio.Semaphore(max_parallel)
 
     outline = state.get("outline_struct", {}) or {}
@@ -760,7 +834,15 @@ async def generate_and_review_by_chapter_node(state: WorkState, llm_generate, ll
                         prior_context=group_context,
                     )
                 async with sem:
-                    txt = await _gen_one_point(llm_generate, prompt, retries, delay, debug=bool(cfg.get("debug")), tag="generate")
+                    txt = await _gen_one_point(
+                        llm_generate,
+                        prompt,
+                        generate_retries,
+                        generate_delay,
+                        timeout=generate_timeout,
+                        debug=bool(cfg.get("debug")),
+                        tag="generate",
+                    )
                 if cfg.get("sanitize_mermaid", True):
                     txt_s, _issues = sanitize_mermaid_in_markdown(txt or "")
                 else:
@@ -801,7 +883,15 @@ async def generate_and_review_by_chapter_node(state: WorkState, llm_generate, ll
                     prior_context="",
                 )
                 async with sem:
-                    txt = await _gen_one_point(llm_generate, base, retries, delay, debug=bool(cfg.get("debug")), tag="generate")
+                    txt = await _gen_one_point(
+                        llm_generate,
+                        base,
+                        generate_retries,
+                        generate_delay,
+                        timeout=generate_timeout,
+                        debug=bool(cfg.get("debug")),
+                        tag="generate",
+                    )
                 if cfg.get("sanitize_mermaid", True):
                     txt_s, _issues = sanitize_mermaid_in_markdown(txt or "")
                 else:
@@ -853,7 +943,15 @@ async def generate_and_review_by_chapter_node(state: WorkState, llm_generate, ll
                         prior_context=group_drafts.get(sections[i-1].get("id"), "") if i > 0 else "",
                     )
                     async with sem:
-                        txt = await _gen_one_point(llm_generate, base, retries, delay, debug=bool(cfg.get("debug")), tag="generate")
+                        txt = await _gen_one_point(
+                            llm_generate,
+                            base,
+                            generate_retries,
+                            generate_delay,
+                            timeout=generate_timeout,
+                            debug=bool(cfg.get("debug")),
+                            tag="generate",
+                        )
                     if cfg.get("sanitize_mermaid", True):
                         txt_s, _issues = sanitize_mermaid_in_markdown(txt or "")
                     else:
@@ -882,7 +980,16 @@ async def generate_and_review_by_chapter_node(state: WorkState, llm_generate, ll
                 peers = [pm for pm in peer_meta if (pm.get("id") or "") != pid]
                 content = group_drafts.get(pid, "")
                 async with sem:
-                    rv = await _review_one_point_with_context(llm_review, pid, content, peers, debug=bool(cfg.get("debug")))
+                    rv = await _review_one_point_with_context(
+                        llm_review,
+                        pid,
+                        content,
+                        peers,
+                        retries=review_point_retries,
+                        delay=review_delay,
+                        timeout=review_timeout,
+                        debug=bool(cfg.get("debug")),
+                    )
                 try:
                     (reviews_dir / f"{pid}.json").write_text(json.dumps(rv, ensure_ascii=False, indent=2), encoding="utf-8")
                 except Exception:
@@ -941,10 +1048,23 @@ async def generate_and_review_by_chapter_node(state: WorkState, llm_generate, ll
 
 async def generate_and_review_by_chapter_node_tool(state: WorkState, llm_generate, llm_review) -> WorkState:
     """工具型主题版本：提示词采用 Prompt 2（工具类），并保持并发与上下文策略一致。"""
-    cfg = state.get("config", {})
+    cfg = state.get("config", {}) or {}
     max_parallel = int(cfg.get("max_parallel_requests", 8))
-    retries = int(cfg.get("retry_times", 3))
-    delay = int(cfg.get("retry_delay", 10))
+    base_retry_times = int(cfg.get("retry_times", 3))
+    generate_retries = max(1, int(cfg.get("generate_point_retries", base_retry_times)))
+    generate_delay = max(1, int(cfg.get("retry_delay", 10)))
+    review_point_retries = max(1, int(cfg.get("review_point_retries", cfg.get("review_retry_times", base_retry_times))))
+    review_delay = max(1, int(cfg.get("review_retry_delay", cfg.get("retry_delay", 10))))
+
+    def _parse_timeout(value: Any) -> Optional[float]:
+        try:
+            t = float(value)
+            return t if t > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    generate_timeout = _parse_timeout(cfg.get("generate_point_timeout"))
+    review_timeout = _parse_timeout(cfg.get("review_point_timeout"))
     sem = asyncio.Semaphore(max_parallel)
 
     outline = state.get("outline_struct", {}) or {}
@@ -1012,7 +1132,15 @@ async def generate_and_review_by_chapter_node_tool(state: WorkState, llm_generat
                     prior_context=group_context,
                 )
                 async with sem:
-                    txt = await _gen_one_point(llm_generate, prompt, retries, delay, debug=bool(cfg.get("debug")), tag="generate")
+                    txt = await _gen_one_point(
+                        llm_generate,
+                        prompt,
+                        generate_retries,
+                        generate_delay,
+                        timeout=generate_timeout,
+                        debug=bool(cfg.get("debug")),
+                        tag="generate",
+                    )
                 if cfg.get("sanitize_mermaid", True):
                     txt_s, _issues = sanitize_mermaid_in_markdown(txt or "")
                 else:
@@ -1053,7 +1181,15 @@ async def generate_and_review_by_chapter_node_tool(state: WorkState, llm_generat
                     prior_context="",
                 )
                 async with sem:
-                    txt = await _gen_one_point(llm_generate, base, retries, delay, debug=bool(cfg.get("debug")), tag="generate")
+                    txt = await _gen_one_point(
+                        llm_generate,
+                        base,
+                        generate_retries,
+                        generate_delay,
+                        timeout=generate_timeout,
+                        debug=bool(cfg.get("debug")),
+                        tag="generate",
+                    )
                 if cfg.get("sanitize_mermaid", True):
                     txt_s, _issues = sanitize_mermaid_in_markdown(txt or "")
                 else:
@@ -1110,7 +1246,15 @@ async def generate_and_review_by_chapter_node_tool(state: WorkState, llm_generat
                         prior_context=parent_txt,
                     )
                     async with sem:
-                        txt = await _gen_one_point(llm_generate, prompt, retries, delay, debug=bool(cfg.get("debug")), tag="generate")
+                        txt = await _gen_one_point(
+                            llm_generate,
+                            prompt,
+                            generate_retries,
+                            generate_delay,
+                            timeout=generate_timeout,
+                            debug=bool(cfg.get("debug")),
+                            tag="generate",
+                        )
                     if cfg.get("sanitize_mermaid", True):
                         txt_s, _issues = sanitize_mermaid_in_markdown(txt or "")
                     else:
@@ -1138,7 +1282,16 @@ async def generate_and_review_by_chapter_node_tool(state: WorkState, llm_generat
                 peers = [pm for pm in peer_meta if (pm.get("id") or "") != pid]
                 content = group_drafts.get(pid, "")
                 async with sem:
-                    rv = await _review_one_point_with_context(llm_review, pid, content, peers, debug=bool(cfg.get("debug")))
+                    rv = await _review_one_point_with_context(
+                        llm_review,
+                        pid,
+                        content,
+                        peers,
+                        retries=review_point_retries,
+                        delay=review_delay,
+                        timeout=review_timeout,
+                        debug=bool(cfg.get("debug")),
+                    )
                 try:
                     (reviews_dir / f"{pid}.json").write_text(json.dumps(rv, ensure_ascii=False, indent=2), encoding="utf-8")
                 except Exception:
@@ -1205,6 +1358,19 @@ async def review_drafts_node(state: WorkState, llm_review) -> WorkState:
     sem = asyncio.Semaphore(max(1, max_parallel))
     debug = bool(cfg.get("debug"))
 
+    base_review_retries = int(cfg.get("review_point_retries", cfg.get("review_retry_times", cfg.get("retry_times", 1))))
+    review_point_retries = max(1, base_review_retries)
+    review_delay = max(1, int(cfg.get("review_retry_delay", cfg.get("retry_delay", 10))))
+
+    def _parse_timeout(value: Any) -> Optional[float]:
+        try:
+            t = float(value)
+            return t if t > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    review_timeout = _parse_timeout(cfg.get("review_point_timeout"))
+
     outline = state.get("outline_struct", {}) or {}
     chapters_struct = outline.get("chapters") or []
     selected_titles = state.get("selected_chapters") or [c.get("title", "") for c in chapters_struct]
@@ -1232,6 +1398,9 @@ async def review_drafts_node(state: WorkState, llm_review) -> WorkState:
                 pid,
                 content,
                 peers,
+                retries=review_point_retries,
+                delay=review_delay,
+                timeout=review_timeout,
                 debug=debug,
             )
         try:
@@ -1674,8 +1843,13 @@ def main() -> int:
     output_retry_attempts = max(1, int(args.output_retries or 1))
     output_retry_timeout = _normalize_timeout(args.output_timeout)
 
+    point_generate_timeout = generate_retry_timeout
+    point_review_timeout = review_retry_timeout
+    generate_stage_timeout: Optional[float] = None
+    review_stage_timeout: Optional[float] = None
+
     logger.info(
-        "重试配置 | delay=%.1fs | config=%d×/%s | input=%d×/%s | prepare=%d×/%s | classify=%d×/%s | generate=%d×/%s | review=%d×/%s | fix=%d×/%s | output=%d×/%s",
+        "重试配置 | delay=%.1fs | config=%d×/%s | input=%d×/%s | prepare=%d×/%s | classify=%d×/%s | generate阶段=%d×/%s | review阶段=%d×/%s | fix=%d×/%s | output=%d×/%s",
         retry_delay,
         config_retry_attempts,
         _format_timeout(config_retry_timeout),
@@ -1686,13 +1860,18 @@ def main() -> int:
         classify_retry_attempts,
         _format_timeout(classify_retry_timeout),
         generate_retry_attempts,
-        _format_timeout(generate_retry_timeout),
+        _format_timeout(generate_stage_timeout),
         review_retry_attempts,
-        _format_timeout(review_retry_timeout),
+        _format_timeout(review_stage_timeout),
         fix_retry_attempts,
         _format_timeout(fix_retry_timeout),
         output_retry_attempts,
         _format_timeout(output_retry_timeout),
+    )
+    logger.info(
+        "节点超时 | 生成节点=%s | 审查节点=%s",
+        _format_timeout(point_generate_timeout),
+        _format_timeout(point_review_timeout),
     )
 
     try:
@@ -1707,6 +1886,23 @@ def main() -> int:
     except Exception as exc:
         logger.error(f"[错误] {exc}")
         return 1
+
+    default_retry_delay = int(retry_delay) if retry_delay >= 1 else 1
+    if default_retry_delay <= 0:
+        default_retry_delay = 1
+
+    if isinstance(cfg, dict):
+        cfg.setdefault("retry_times", generate_retry_attempts)
+        cfg.setdefault("retry_delay", default_retry_delay)
+        cfg.setdefault("generate_point_retries", generate_retry_attempts)
+        if point_generate_timeout is not None:
+            cfg.setdefault("generate_point_timeout", point_generate_timeout)
+        cfg.setdefault("review_retry_times", review_retry_attempts)
+        cfg.setdefault("review_point_retries", review_retry_attempts)
+        if "review_retry_delay" not in cfg:
+            cfg["review_retry_delay"] = cfg.get("retry_delay", default_retry_delay)
+        if point_review_timeout is not None:
+            cfg.setdefault("review_point_timeout", point_review_timeout)
 
     def _load_input_bundle() -> Tuple[Path, Dict[str, Any]]:
         p = Path(args.input)
@@ -1977,7 +2173,7 @@ def main() -> int:
             "阶段：内容生成",
             _generate_stage,
             max_attempts=generate_retry_attempts,
-            timeout=generate_retry_timeout,
+            timeout=generate_stage_timeout,
             delay=retry_delay,
             logger=logger,
         )
@@ -1996,7 +2192,7 @@ def main() -> int:
                 "阶段：内容审查",
                 _review_stage,
                 max_attempts=review_retry_attempts,
-                timeout=review_retry_timeout,
+                timeout=review_stage_timeout,
                 delay=retry_delay,
                 logger=logger,
             )

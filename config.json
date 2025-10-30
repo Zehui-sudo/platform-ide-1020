@@ -57,21 +57,21 @@
     "gpt-5-zhongzhuan": {
       "provider": "openai_compat",
       "base_url": "https://hiapi.online/v1",
-      "api_key": "sk-lKdEnWDDuuVxoG5NVrk0PYsCGfYKoi2FLU2qJcQrJzEyOOpM",
+      "api_key": "sk-zl5ZBir0706y4oAdl3vXOqmp3AkvV5EiOfNgmx3vT5bQ5s45",
       "model": "gpt-5",
       "temperature": 0.6
     },
     "gemini-2.5-pro-preview-06-05-zhongzhuan": {
       "provider": "openai_compat",
       "base_url": "https://hiapi.online/v1",
-      "api_key": "sk-lKdEnWDDuuVxoG5NVrk0PYsCGfYKoi2FLU2qJcQrJzEyOOpM",
+      "api_key": "sk-zl5ZBir0706y4oAdl3vXOqmp3AkvV5EiOfNgmx3vT5bQ5s45",
       "model": "gemini-2.5-pro-preview-06-05",
       "temperature": 0.6
     },
     "gemini-2.5-pro-search": {
       "provider": "openai_compat",
       "base_url": "https://hiapi.online/v1",
-      "api_key": "sk-lKdEnWDDuuVxoG5NVrk0PYsCGfYKoi2FLU2qJcQrJzEyOOpM",
+      "api_key": "sk-zl5ZBir0706y4oAdl3vXOqmp3AkvV5EiOfNgmx3vT5bQ5s45",
       "model": "gemini-2.5-pro-search",
       "temperature": 0.6
     }

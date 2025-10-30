@@ -117,7 +117,7 @@ class JobRecord:
     id: str
     type: str  # outline | content
     status: str = "running"
-    start_ts: float = field(default_factory=lambda: datetime.utcnow().timestamp())
+    start_ts: float = field(default_factory=lambda: datetime.now(CHINA_TZ).timestamp())
     end_ts: Optional[float] = None
     subject: Optional[str] = None
     learning_style: Optional[str] = None
@@ -148,7 +148,7 @@ class JobRecord:
 
 
 def _make_job_id(prefix: str) -> str:
-    return f"{prefix}-{int(datetime.utcnow().timestamp() * 1000)}-{uuid4().hex[:6]}"
+    return f"{prefix}-{int(datetime.now(CHINA_TZ).timestamp() * 1000)}-{uuid4().hex[:6]}"
 
 
 class JobManager:
@@ -183,7 +183,7 @@ class JobManager:
 
     def finish(self, job: JobRecord, status: str) -> None:
         job.status = status
-        job.end_ts = datetime.utcnow().timestamp()
+        job.end_ts = datetime.now(CHINA_TZ).timestamp()
         self._persist_jobs()
 
     def attach(self, job: JobRecord) -> Tuple[str, "asyncio.Queue[Dict[str, Any]]"]:
@@ -242,10 +242,11 @@ class JobManager:
         data["pid"] = job.pid
         data["totalToFetch"] = job.total_to_fetch
         data["processed"] = job.processed
-        start_dt = datetime.fromtimestamp(job.start_ts, tz=timezone.utc).astimezone(CHINA_TZ)
+        # 直接从北京时间戳转换为北京时间
+        start_dt = datetime.fromtimestamp(job.start_ts, tz=CHINA_TZ)
         data["startTimeIso"] = start_dt.isoformat()
         if job.end_ts is not None:
-            end_dt = datetime.fromtimestamp(job.end_ts, tz=timezone.utc).astimezone(CHINA_TZ)
+            end_dt = datetime.fromtimestamp(job.end_ts, tz=CHINA_TZ)
             data["endTimeIso"] = end_dt.isoformat()
         return data
 
@@ -276,9 +277,9 @@ class JobManager:
                     continue
                 start_ts = item.get("startTs")
                 try:
-                    start_ts_val = float(start_ts) if start_ts is not None else datetime.utcnow().timestamp()
+                    start_ts_val = float(start_ts) if start_ts is not None else datetime.now(CHINA_TZ).timestamp()
                 except (TypeError, ValueError):
-                    start_ts_val = datetime.utcnow().timestamp()
+                    start_ts_val = datetime.now(CHINA_TZ).timestamp()
                 if isinstance(start_ts, str):
                     with suppress(Exception):
                         start_ts_val = datetime.fromisoformat(start_ts.replace("Z", "+00:00")).timestamp()
@@ -904,6 +905,8 @@ async def _run_content_job(
         "--config",
         str(CONFIG_PATH),
     ]
+    # Align with Next.js pipeline behaviour: skip content review by default.
+    args.append("--skip-content-review")
     if selected_chapters:
         args.extend(["--selected-chapters", selected_chapters])
     if debug or os.environ.get("PIPELINE_LOG") == "1":
