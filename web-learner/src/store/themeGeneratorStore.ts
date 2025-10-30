@@ -1,8 +1,37 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
 import { useLearningStore } from '@/store/learningStore';
 
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? '').replace(/\/$/, '');
+const apiUrl = (path: string) => `${API_BASE}${path}`;
+
 type StageStatus = 'pending' | 'running' | 'completed' | 'error';
+
+interface SnapshotStage {
+  id: string;
+  label: string;
+  status: StageStatus;
+  detail?: string;
+  progress?: number;
+}
+
+interface PipelineJobSnapshot {
+  id: string;
+  type: 'outline' | 'content';
+  status: 'running' | 'success' | 'error' | 'cancelled';
+  startTs: number;
+  endTs?: number;
+  subject?: string;
+  learningStyle?: string;
+  expectedContent?: string;
+  outputPath?: string;
+  logPath?: string;
+  stages: {
+    collect?: SnapshotStage;
+    outline?: SnapshotStage;
+    content?: SnapshotStage;
+    [key: string]: SnapshotStage | undefined;
+  };
+}
 
 interface OutlineSectionSummary {
   id?: string;
@@ -92,6 +121,7 @@ interface ThemeGeneratorState {
   // Job and results
   jobId: string | null;
   contentJobId: string | null;
+  outlineInputPath: string | null;
   outlineResult: OutlineResultPayload | null;
   contentResult: ContentResultPayload | null;
   // Estimated totals for progress tracking
@@ -120,20 +150,36 @@ interface ThemeGeneratorState {
   cancelOutlineGeneration: () => Promise<void>;
   loadCourse: () => void;
   reset: () => void;
-  rehydrate: () => void;
+  rehydrate: () => Promise<void>;
 }
 
-// Keep EventSource instances outside of the persisted state
+// Keep EventSource instances outside of the store state
 let outlineEvtSrc: EventSource | null = null;
 let contentEvtSrc: EventSource | null = null;
 
-const initialState = {
-  stage: 'idle' as GenerationStage,
+type ThemeGeneratorData = Omit<
+  ThemeGeneratorState,
+  | 'setFormField'
+  | 'setUiOpen'
+  | 'startOutlineGeneration'
+  | 'startContentGeneration'
+  | 'subscribeToOutline'
+  | 'subscribeToContent'
+  | 'cancelContentGeneration'
+  | 'cancelOutlineGeneration'
+  | 'loadCourse'
+  | 'reset'
+  | 'rehydrate'
+>;
+
+const createInitialState = (): ThemeGeneratorData => ({
+  stage: 'idle',
   themeName: '',
-  generationStyle: 'principle' as 'principle' | 'preview',
+  generationStyle: 'principle',
   content: '',
   jobId: null,
   contentJobId: null,
+  outlineInputPath: null,
   outlineResult: null,
   contentResult: null,
   contentTotal: null,
@@ -142,355 +188,451 @@ const initialState = {
   showLogs: false,
   isSubscribing: false,
   uiOpen: false,
-  collectStage: { status: 'pending' } as StageState,
-  outlineStage: { status: 'pending' } as StageState,
-  contentStage: { status: 'pending' } as StageState,
+  collectStage: { status: 'pending' },
+  outlineStage: { status: 'pending' },
+  contentStage: { status: 'pending' },
+});
+
+const clampProgress = (value?: number): number | undefined =>
+  typeof value === 'number' ? Math.max(0, Math.min(1, value)) : undefined;
+
+const toStageState = (stage?: SnapshotStage): StageState => ({
+  status: stage?.status ?? 'pending',
+  detail: stage?.detail,
+  progress: clampProgress(stage?.progress),
+});
+
+const parseSavedFromDetail = (detail?: string): number | null => {
+  if (!detail) return null;
+  const m = detail.match(/已保存\s*(\d+)\s*个/);
+  if (m) return parseInt(m[1], 10);
+  return null;
 };
 
-export const useThemeGeneratorStore = create<ThemeGeneratorState>()(
-  persist(
-    (set, get) => ({
-      ...initialState,
+export const useThemeGeneratorStore = create<ThemeGeneratorState>()((set, get) => ({
+  ...createInitialState(),
 
-      setFormField: (field, value) => set({ [field]: value }),
-      setUiOpen: (open) => set({ uiOpen: open }),
+  setFormField: (field, value) =>
+    set({ [field]: value } as Partial<ThemeGeneratorState>),
 
-      subscribeToOutline: (jobId) => {
-        if (outlineEvtSrc) {
-          outlineEvtSrc.close();
+  setUiOpen: (open) => set({ uiOpen: open }),
+
+  subscribeToOutline: (jobId) => {
+    if (outlineEvtSrc) {
+      outlineEvtSrc.close();
+    }
+    set({ isSubscribing: true, logs: [] });
+
+        const es = new EventSource(apiUrl(`/api/outline/stream?jobId=${encodeURIComponent(jobId)}`));
+    outlineEvtSrc = es;
+
+    es.addEventListener('file', (ev: MessageEvent) => {
+      try {
+        const data = JSON.parse(ev.data) as { outPath?: string };
+        if (data?.outPath) {
+          set({ outlineInputPath: data.outPath });
         }
-        set({ isSubscribing: true, logs: [] });
+      } catch {}
+    });
 
-        const es = new EventSource(`/api/outline/stream?jobId=${encodeURIComponent(jobId)}`);
-        outlineEvtSrc = es;
-        
-        es.addEventListener('log', (ev: MessageEvent) => {
-          const rawData = typeof ev.data === 'string' ? ev.data : JSON.stringify(ev.data);
-          let line = rawData;
-          try {
-            const parsed = JSON.parse(rawData) as { line?: string };
-            line = parsed.line ?? rawData;
-          } catch {
-            // Keep raw string when parsing fails.
-          }
-          set((state) => ({ logs: [...state.logs.slice(-500), line] }));
-        });
-        
-        es.addEventListener('hello', (ev: MessageEvent) => {
-          const data = JSON.parse(ev.data);
-          const snap = data?.snapshot || {};
-          if (snap?.stages) {
-            const stc = snap.stages.collect;
-            const sto = snap.stages.outline;
-            if (stc) set({ collectStage: { status: stc.status, detail: stc.detail, progress: stc.progress } });
-            if (sto) set({ outlineStage: { status: sto.status, detail: sto.detail } });
-          }
-          // 若任务已结束，服务端会紧跟着发送 end 事件，这里不提前切换阶段
-        });
+    es.addEventListener('log', (ev: MessageEvent) => {
+      const rawData = typeof ev.data === 'string' ? ev.data : JSON.stringify(ev.data);
+      let line = rawData;
+      try {
+        const parsed = JSON.parse(rawData) as { line?: string };
+        line = parsed.line ?? rawData;
+      } catch {}
+      set((state) => ({ logs: [...state.logs.slice(-500), line] }));
+    });
 
-        es.addEventListener('stage', (ev: MessageEvent) => {
-          const data = JSON.parse(ev.data);
-          if (data?.id === 'collect') {
-            set({ collectStage: { status: data.status, detail: data.detail, progress: typeof data.progress === 'number' ? Math.max(0, Math.min(1, data.progress)) : undefined } });
-          } else if (data?.id === 'outline') {
-            set({ outlineStage: { status: data.status, detail: data.detail } });
-          }
-        });
+    es.addEventListener('hello', (ev: MessageEvent) => {
+      try {
+        const data = JSON.parse(ev.data);
+        const snap = data?.snapshot || {};
+        const stages = snap?.stages || {};
+        set((state) => ({
+          collectStage: toStageState(stages.collect),
+          outlineStage: toStageState(stages.outline),
+          outlineInputPath: typeof snap.outputPath === 'string' ? snap.outputPath : state.outlineInputPath,
+        }));
+      } catch {}
+    });
 
-        es.addEventListener('end', async (ev: MessageEvent) => {
-          es.close();
-          outlineEvtSrc = null;
-          const data = JSON.parse(ev.data);
-          if (data?.status === 'success') {
-            const r = await fetch(`/api/outline/result?jobId=${encodeURIComponent(jobId)}`, { cache: 'no-store' });
-            if (r.ok) {
-              const result = (await r.json()) as OutlineResultPayload;
-              set({ outlineResult: result, stage: 'outline_ready', isSubscribing: false });
-            } else {
-              set({ stage: 'idle', isSubscribing: false });
-            }
+    es.addEventListener('stage', (ev: MessageEvent) => {
+      try {
+        const data = JSON.parse(ev.data);
+        if (data?.id === 'collect') {
+          set({ collectStage: toStageState(data as SnapshotStage) });
+        } else if (data?.id === 'outline') {
+          set({ outlineStage: toStageState(data as SnapshotStage) });
+        }
+      } catch {}
+    });
+
+    es.addEventListener('end', async (ev: MessageEvent) => {
+      es.close();
+      outlineEvtSrc = null;
+      try {
+        const data = JSON.parse(ev.data);
+        if (data?.outputPath) {
+          set({ outlineInputPath: data.outputPath });
+        }
+        if (data?.status === 'success') {
+            const r = await fetch(apiUrl(`/api/outline/result?jobId=${encodeURIComponent(jobId)}`), { cache: 'no-store' });
+          if (r.ok) {
+            const result = (await r.json()) as OutlineResultPayload;
+            set({
+              outlineResult: result,
+              stage: 'outline_ready',
+              isSubscribing: false,
+            });
           } else {
             set({ stage: 'idle', isSubscribing: false });
           }
-        });
-
-        // 允许 EventSource 自动重连，不在错误时主动关闭或重置阶段
-        es.onerror = () => {
-          // 保持订阅与阶段，等待自动重连
-        };
-      },
-
-      startOutlineGeneration: async () => {
-        const { themeName, generationStyle, content } = get();
-        if (!themeName.trim() || !content.trim()) return;
-
-        set({
-          stage: 'generating_outline',
-          logs: [],
-          collectStage: { status: 'pending' },
-          outlineStage: { status: 'pending' },
-          outlineResult: null,
-          jobId: null,
-        });
-
-        try {
-          const styleMap = { principle: 'principles', preview: 'deep_preview' };
-          const res = await fetch('/api/outline/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              subject: themeName.trim(),
-              learningStyle: styleMap[generationStyle],
-              expectedContent: content.trim(),
-              topN: 3,
-              printPrompt: true,
-              debug: false,
-            }),
-          });
-
-          if (!res.ok) {
-            let message = `Failed to start job: ${res.status}`;
-            try {
-              const data = await res.json();
-              message = String((data as { detail?: string; error?: string })?.detail ?? (data as { error?: string })?.error ?? message);
-            } catch {}
-            throw new Error(message);
-          }
-          const { jobId } = (await res.json()) as JobStartResponse;
-          set({ jobId });
-          get().subscribeToOutline(jobId);
-        } catch (error) {
-          console.error('Failed to generate theme:', error);
-          const detail = error instanceof Error ? error.message : '无法启动大纲生成任务';
-          set({
-            stage: 'idle',
-            collectStage: { status: 'error', detail },
-            outlineStage: { status: 'error', detail },
-            isSubscribing: false,
-          });
+        } else {
+          set({ stage: 'idle', isSubscribing: false });
         }
-      },
-      
-      subscribeToContent: (jobId: string) => {
-        if (contentEvtSrc) {
-            contentEvtSrc.close();
-        }
-        set({ isSubscribing: true, logs: [] });
-
-        const es = new EventSource(`/api/content/stream?jobId=${encodeURIComponent(jobId)}`);
-        contentEvtSrc = es;
-
-        es.addEventListener('hello', (ev: MessageEvent) => {
-            const data = JSON.parse(ev.data);
-            const snap = data?.snapshot || {};
-            if (snap?.stages?.content) {
-              const st = snap.stages.content;
-              // Try infer saved count from detail
-              let saved: number | undefined;
-              const m = typeof st.detail === 'string' ? st.detail.match(/已保存\s*(\d+)\s*个/) : null;
-              if (m) saved = parseInt(m[1], 10);
-              set((state) => {
-                const total = state.contentTotal;
-                const progress = (typeof saved === 'number' && typeof total === 'number' && total > 0)
-                  ? Math.max(0, Math.min(1, saved / total))
-                  : st.progress;
-                return {
-                  contentSaved: typeof saved === 'number' ? saved : state.contentSaved,
-                  contentStage: { status: st.status, detail: st.detail, progress },
-                };
-              });
-            }
-            // 不在 hello 时切换阶段，等待 end 事件统一处理
-        });
-
-        es.addEventListener('stage', (ev: MessageEvent) => {
-            const data = JSON.parse(ev.data);
-            if (data?.id === 'content') {
-              let saved: number | undefined;
-              const m = typeof data.detail === 'string' ? data.detail.match(/已保存\s*(\d+)\s*个/) : null;
-              if (m) saved = parseInt(m[1], 10);
-              set((state) => {
-                const total = state.contentTotal;
-                const progress = (typeof saved === 'number' && typeof total === 'number' && total > 0)
-                  ? Math.max(0, Math.min(1, saved / total))
-                  : data.progress;
-                return {
-                  contentSaved: typeof saved === 'number' ? saved : state.contentSaved,
-                  contentStage: { status: data.status, detail: data.detail, progress },
-                };
-              });
-            }
-        });
-        
-        es.addEventListener('log', (ev: MessageEvent) => {
-            const rawData = typeof ev.data === 'string' ? ev.data : JSON.stringify(ev.data);
-            let line = rawData;
-            try {
-              const parsed = JSON.parse(rawData) as { line?: string };
-              line = parsed.line ?? rawData;
-            } catch {
-              // Keep raw string
-            }
-            set((prev) => ({ logs: [...prev.logs.slice(-500), line] }));
-        });
-
-        es.addEventListener('end', async (ev: MessageEvent) => {
-            es.close();
-            contentEvtSrc = null;
-            const data = JSON.parse(ev.data);
-            if (data?.status === 'success') {
-                const r = await fetch(`/api/content/result?jobId=${encodeURIComponent(jobId)}`, { cache: 'no-store' });
-                if (r.ok) {
-                    const result = (await r.json()) as ContentResultPayload;
-                    set({ contentResult: result, stage: 'content_ready', isSubscribing: false });
-                } else {
-                    set({ stage: 'outline_ready', isSubscribing: false });
-                }
-            } else {
-                set({ stage: 'outline_ready', isSubscribing: false });
-            }
-        });
-
-        // 允许 EventSource 自动重连
-        es.onerror = () => {
-          // no-op; keep subscribing state to allow auto-reconnect
-        };
-    },
-
-      startContentGeneration: async () => {
-        const { jobId, outlineResult } = get();
-        if (!jobId) return;
-
-        // Estimate total points from outline sections
-        const outline = outlineResult?.reconstructed_outline ?? null;
-        const total = estimateSectionTotal(outline);
-
-        set({
-          stage: 'generating_content',
-          contentStage: { status: 'running', detail: 'Initializing script...', progress: total > 0 ? 0 : undefined },
-          contentResult: null,
-          logs: [],
-          contentTotal: total || null,
-          contentSaved: 0,
-        });
-
-        try {
-          const res = await fetch('/api/content/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refJobId: jobId, debug: true }),
-          });
-
-          if (!res.ok) {
-            let message = `Failed to start content generation: ${res.status}`;
-            try {
-              const data = await res.json();
-              message = String((data as { detail?: string; error?: string })?.detail ?? (data as { error?: string })?.error ?? message);
-            } catch {}
-            throw new Error(message);
-          }
-          const { jobId: cJobId } = (await res.json()) as JobStartResponse;
-          set({ contentJobId: cJobId });
-          get().subscribeToContent(cJobId);
-        } catch (error) {
-          console.error(error);
-          const detail = error instanceof Error ? error.message : '无法启动章节生成任务';
-          set({
-            stage: 'outline_ready',
-            contentStage: { status: 'error', detail },
-            isSubscribing: false,
-          });
-        }
-      },
-
-      cancelContentGeneration: async () => {
-        const { contentJobId } = get();
-        if (!contentJobId) return;
-        try {
-          await fetch(`/api/content/cancel?jobId=${encodeURIComponent(contentJobId)}`, { method: 'POST' });
-        } catch {}
-        if (contentEvtSrc) {
-          contentEvtSrc.close();
-          contentEvtSrc = null;
-        }
-        set({ stage: 'outline_ready', isSubscribing: false });
-      },
-
-      cancelOutlineGeneration: async () => {
-        const { jobId } = get();
-        if (!jobId) return;
-        try {
-          await fetch(`/api/outline/cancel?jobId=${encodeURIComponent(jobId)}`, { method: 'POST' });
-        } catch {}
-        if (outlineEvtSrc) {
-          outlineEvtSrc.close();
-          outlineEvtSrc = null;
-        }
+      } catch {
         set({ stage: 'idle', isSubscribing: false });
-      },
-      
-      loadCourse: () => {
-        const { contentResult, outlineResult } = get();
-        try {
-            const pub = contentResult?.publishDir;
-            const getSlug = () => {
-              if (pub) {
-                const parts = String(pub).split(/[\/]+/);
-                const ix = parts.lastIndexOf('content');
-                if (ix >= 0 && ix + 1 < parts.length) return parts[ix + 1];
-              }
-              return (
-                outlineResult?.reconstructed_outline?.meta?.topic_slug ||
-                outlineResult?.subject_slug || ''
-              );
-            };
-            const slug = getSlug();
-            if (slug) {
-              useLearningStore.getState().loadPath(slug);
-            }
-          } catch {}
-      },
+      }
+    });
 
-      reset: () => {
-        if (outlineEvtSrc) outlineEvtSrc.close();
-        if (contentEvtSrc) contentEvtSrc.close();
-        outlineEvtSrc = null;
-        contentEvtSrc = null;
-        set(initialState);
-      },
-      
-      rehydrate: () => {
-        const state = get();
-        // 优先恢复内容生成（若在阶段4中）
-        if (state.contentJobId && !state.contentResult) {
-          console.log('Rehydrating content subscription for job:', state.contentJobId);
-          if (state.stage === 'idle') set({ stage: 'generating_content' });
-          get().subscribeToContent(state.contentJobId);
-          return;
-        }
-        // 其次恢复大纲生成（阶段2/3之间）
-        if (state.jobId && !state.outlineResult) {
-          console.log('Rehydrating outline subscription for job:', state.jobId);
-          if (state.stage === 'idle') set({ stage: 'generating_outline' });
-          get().subscribeToOutline(state.jobId);
-        }
+    es.onerror = () => {
+      // keep connection alive for auto-retry
+    };
+  },
+
+  startOutlineGeneration: async () => {
+    const { themeName, generationStyle, content } = get();
+    if (!themeName.trim() || !content.trim()) return;
+
+    set({
+      stage: 'generating_outline',
+      logs: [],
+      collectStage: { status: 'pending' },
+      outlineStage: { status: 'pending' },
+      outlineResult: null,
+      outlineInputPath: null,
+      jobId: null,
+    });
+
+    try {
+      const styleMap = { principle: 'principles', preview: 'deep_preview' };
+          const res = await fetch(apiUrl('/api/outline/start'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: themeName.trim(),
+          learningStyle: styleMap[generationStyle],
+          expectedContent: content.trim(),
+          topN: 3,
+          printPrompt: true,
+          debug: false,
+        }),
+      });
+
+      if (!res.ok) {
+        let message = `Failed to start job: ${res.status}`;
+        try {
+          const data = await res.json();
+          message = String(
+            (data as { detail?: string; error?: string })?.detail ??
+              (data as { error?: string })?.error ??
+              message,
+          );
+        } catch {}
+        throw new Error(message);
       }
-    }),
-    {
-      name: 'theme-generator-storage',
-      storage: createJSONStorage(() => localStorage),
-      partialize: (state) =>
-        Object.fromEntries(
-          Object.entries(state).filter(([key]) => !['logs', 'showLogs', 'isSubscribing', 'collectStage', 'outlineStage', 'contentStage', 'uiOpen'].includes(key))
-        ),
-      onRehydrateStorage: () => {
-        return (draft, error) => {
-          if (error) console.error('Failed to rehydrate theme generator state', error);
-          if (draft) {
-            draft.rehydrate();
-          }
-        }
-      }
+          const { jobId } = (await res.json()) as JobStartResponse;
+      set({ jobId });
+      get().subscribeToOutline(jobId);
+    } catch (error) {
+      console.error('Failed to generate theme:', error);
+      const detail = error instanceof Error ? error.message : '无法启动大纲生成任务';
+      set({
+        stage: 'idle',
+        collectStage: { status: 'error', detail },
+        outlineStage: { status: 'error', detail },
+        isSubscribing: false,
+      });
     }
-  )
-);
+  },
+
+  subscribeToContent: (jobId: string) => {
+    if (contentEvtSrc) {
+      contentEvtSrc.close();
+    }
+    set({ isSubscribing: true, logs: [] });
+
+        const es = new EventSource(apiUrl(`/api/content/stream?jobId=${encodeURIComponent(jobId)}`));
+    contentEvtSrc = es;
+
+    es.addEventListener('hello', (ev: MessageEvent) => {
+      try {
+        const data = JSON.parse(ev.data);
+        const snap = data?.snapshot || {};
+        const st = snap?.stages?.content as SnapshotStage | undefined;
+        if (st) {
+          let saved: number | undefined;
+          const m = typeof st.detail === 'string' ? st.detail.match(/已保存\s*(\d+)\s*个/) : null;
+          if (m) saved = parseInt(m[1], 10);
+          set((state) => {
+            const total = state.contentTotal;
+            const progress =
+              typeof saved === 'number' && typeof total === 'number' && total > 0
+                ? Math.max(0, Math.min(1, saved / total))
+                : st.progress;
+            return {
+              contentSaved: typeof saved === 'number' ? saved : state.contentSaved,
+              contentStage: { status: st.status, detail: st.detail, progress },
+            };
+          });
+        }
+      } catch {}
+    });
+
+    es.addEventListener('stage', (ev: MessageEvent) => {
+      try {
+        const data = JSON.parse(ev.data);
+        if (data?.id === 'content') {
+          let saved: number | undefined;
+          const m = typeof data.detail === 'string' ? data.detail.match(/已保存\s*(\d+)\s*个/) : null;
+          if (m) saved = parseInt(m[1], 10);
+          set((state) => {
+            const total = state.contentTotal;
+            const progress =
+              typeof saved === 'number' && typeof total === 'number' && total > 0
+                ? Math.max(0, Math.min(1, saved / total))
+                : data.progress;
+            return {
+              contentSaved: typeof saved === 'number' ? saved : state.contentSaved,
+              contentStage: {
+                status: data.status as StageStatus,
+                detail: data.detail,
+                progress: clampProgress(progress),
+              },
+            };
+          });
+        }
+      } catch {}
+    });
+
+    es.addEventListener('log', (ev: MessageEvent) => {
+      const rawData = typeof ev.data === 'string' ? ev.data : JSON.stringify(ev.data);
+      let line = rawData;
+      try {
+        const parsed = JSON.parse(rawData) as { line?: string };
+        line = parsed.line ?? rawData;
+      } catch {}
+      set((prev) => ({ logs: [...prev.logs.slice(-500), line] }));
+    });
+
+    es.addEventListener('end', async (ev: MessageEvent) => {
+      es.close();
+      contentEvtSrc = null;
+      try {
+        const data = JSON.parse(ev.data);
+        if (data?.status === 'success') {
+                const r = await fetch(apiUrl(`/api/content/result?jobId=${encodeURIComponent(jobId)}`), { cache: 'no-store' });
+          if (r.ok) {
+            const result = (await r.json()) as ContentResultPayload;
+            set({ contentResult: result, stage: 'content_ready', isSubscribing: false });
+          } else {
+            set({ stage: 'outline_ready', isSubscribing: false });
+          }
+        } else {
+          set({ stage: 'outline_ready', isSubscribing: false });
+        }
+      } catch {
+        set({ stage: 'outline_ready', isSubscribing: false });
+      }
+    });
+
+    es.onerror = () => {
+      // keep connection alive for auto-retry
+    };
+  },
+
+  startContentGeneration: async () => {
+    const { jobId, outlineResult, outlineInputPath } = get();
+    if (!jobId) return;
+
+    const outline = outlineResult?.reconstructed_outline ?? null;
+    const total = estimateSectionTotal(outline);
+
+    set({
+      stage: 'generating_content',
+      contentStage: { status: 'running', detail: 'Initializing script...', progress: total > 0 ? 0 : undefined },
+      contentResult: null,
+      logs: [],
+      contentTotal: total || null,
+      contentSaved: 0,
+    });
+
+    try {
+          const res = await fetch(apiUrl('/api/content/start'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          refJobId: jobId,
+          inputPath: outlineInputPath ?? undefined,
+          debug: true,
+        }),
+      });
+
+      if (!res.ok) {
+        let message = `Failed to start content generation: ${res.status}`;
+        try {
+          const data = await res.json();
+          message = String(
+            (data as { detail?: string; error?: string })?.detail ??
+              (data as { error?: string })?.error ??
+              message,
+          );
+        } catch {}
+        throw new Error(message);
+      }
+      const { jobId: cJobId } = (await res.json()) as JobStartResponse;
+      set({ contentJobId: cJobId });
+      get().subscribeToContent(cJobId);
+    } catch (error) {
+      console.error(error);
+      const detail = error instanceof Error ? error.message : '无法启动章节生成任务';
+      set({
+        stage: 'outline_ready',
+        contentStage: { status: 'error', detail },
+        isSubscribing: false,
+      });
+    }
+  },
+
+  cancelContentGeneration: async () => {
+    const { contentJobId } = get();
+    if (!contentJobId) return;
+    try {
+          await fetch(apiUrl(`/api/content/cancel?jobId=${encodeURIComponent(contentJobId)}`), { method: 'POST' });
+    } catch {}
+    if (contentEvtSrc) {
+      contentEvtSrc.close();
+      contentEvtSrc = null;
+    }
+    set({ stage: 'outline_ready', isSubscribing: false });
+  },
+
+  cancelOutlineGeneration: async () => {
+    const { jobId } = get();
+    if (!jobId) return;
+    try {
+          await fetch(apiUrl(`/api/outline/cancel?jobId=${encodeURIComponent(jobId)}`), { method: 'POST' });
+    } catch {}
+    if (outlineEvtSrc) {
+      outlineEvtSrc.close();
+      outlineEvtSrc = null;
+    }
+    set({ stage: 'idle', isSubscribing: false });
+  },
+
+  loadCourse: () => {
+    const { contentResult, outlineResult } = get();
+    try {
+      const pub = contentResult?.publishDir;
+      const getSlug = () => {
+        if (pub) {
+          const parts = String(pub).split(/[\/]+/);
+          const ix = parts.lastIndexOf('content');
+          if (ix >= 0 && ix + 1 < parts.length) return parts[ix + 1];
+        }
+        return (
+          outlineResult?.reconstructed_outline?.meta?.topic_slug ||
+          outlineResult?.subject_slug ||
+          ''
+        );
+      };
+      const slug = getSlug();
+      if (slug) {
+        useLearningStore.getState().loadPath(slug);
+      }
+    } catch {}
+  },
+
+  reset: () => {
+    if (outlineEvtSrc) outlineEvtSrc.close();
+    if (contentEvtSrc) contentEvtSrc.close();
+    outlineEvtSrc = null;
+    contentEvtSrc = null;
+    set(() => ({ ...createInitialState() }));
+  },
+
+  rehydrate: async () => {
+    try {
+      const [outlineResp, contentResp] = await Promise.all([
+        fetch(apiUrl('/api/pipeline/jobs/latest?type=outline'), { cache: 'no-store' }).catch(() => null),
+        fetch(apiUrl('/api/pipeline/jobs/latest?type=content'), { cache: 'no-store' }).catch(() => null),
+      ]);
+
+      const outlineData = outlineResp && outlineResp.ok ? await outlineResp.json() : null;
+      const contentData = contentResp && contentResp.ok ? await contentResp.json() : null;
+
+      const outlineJob = (outlineData?.job ?? null) as PipelineJobSnapshot | null;
+      const contentJob = (contentData?.job ?? null) as PipelineJobSnapshot | null;
+
+      const outlineResultPromise =
+        outlineJob && outlineJob.status === 'success'
+          ? fetch(apiUrl(`/api/outline/result?jobId=${encodeURIComponent(outlineJob.id)}`), { cache: 'no-store' })
+              .then((res) => (res.ok ? res.json() : null))
+              .catch(() => null)
+          : Promise.resolve(null);
+
+      const contentResultPromise =
+        contentJob && contentJob.status === 'success'
+          ? fetch(apiUrl(`/api/content/result?jobId=${encodeURIComponent(contentJob.id)}`), { cache: 'no-store' })
+              .then((res) => (res.ok ? res.json() : null))
+              .catch(() => null)
+          : Promise.resolve(null);
+
+      const [outlineResult, contentResult] = await Promise.all([
+        outlineResultPromise,
+        contentResultPromise,
+      ]);
+
+      let inferredStage: GenerationStage = 'idle';
+      if (contentJob) {
+        if (contentJob.status === 'running') inferredStage = 'generating_content';
+        else if (contentJob.status === 'success') inferredStage = 'content_ready';
+        else if (contentJob.status === 'error') inferredStage = 'outline_ready';
+      }
+      if (inferredStage === 'idle' && outlineJob) {
+        if (outlineJob.status === 'running') inferredStage = 'generating_outline';
+        else if (outlineJob.status === 'success') inferredStage = 'outline_ready';
+      }
+
+      const savedFromContent = parseSavedFromDetail(contentJob?.stages?.content?.detail);
+
+      set((state) => ({
+        ...state,
+        logs: [],
+        isSubscribing: false,
+        jobId: outlineJob?.id ?? null,
+        contentJobId: contentJob?.id ?? null,
+        outlineInputPath: outlineJob?.outputPath ?? null,
+        collectStage: toStageState(outlineJob?.stages?.collect),
+        outlineStage: toStageState(outlineJob?.stages?.outline),
+        contentStage: toStageState(contentJob?.stages?.content),
+        outlineResult: (outlineResult ?? state.outlineResult) as OutlineResultPayload | null,
+        contentResult: (contentResult ?? state.contentResult) as ContentResultPayload | null,
+        stage: inferredStage,
+        contentSaved: savedFromContent ?? (state.contentSaved ?? null),
+        contentTotal: state.contentTotal,
+      }));
+
+      if (outlineJob?.status === 'running') {
+        get().subscribeToOutline(outlineJob.id);
+      }
+      if (contentJob?.status === 'running') {
+        get().subscribeToContent(contentJob.id);
+      }
+    } catch (error) {
+      console.error('Failed to rehydrate theme generator state', error);
+    }
+  },
+}));

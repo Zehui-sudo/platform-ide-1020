@@ -16,6 +16,7 @@ const toErrorMessage = (error: unknown): string =>
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    console.log('[pipeline] /api/content/start body:', body);
     const refJobId: string | undefined = body?.refJobId ? String(body.refJobId) : undefined;
     let inputPath: string | undefined = body?.inputPath ? String(body.inputPath) : undefined;
     const selectedChapters: string | undefined = body?.selectedChapters ? String(body.selectedChapters) : undefined;

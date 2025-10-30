@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
 import path from 'path';
-import { broadcast, createJob, finishJob, JobRecord, updateStage } from './jobManager';
+import { broadcast, createJob, finishJob, JobRecord, touchJob, updateStage } from './jobManager';
 
 export interface IntegratedParams {
   subject: string;
@@ -29,6 +29,7 @@ function parseLineForStages(job: JobRecord, line: string) {
       const total = parseInt(mPar[1], 10);
       job.totalToFetch = total;
       job.processed = 0;
+      touchJob(job);
       updateStage(job, 'collect', { status: 'running', progress: 0, detail: `已完成 0/${total}` });
     }
     // 每本完成（去除时间戳前缀的限制）
@@ -37,6 +38,7 @@ function parseLineForStages(job: JobRecord, line: string) {
       job.processed += 1;
       const total = job.totalToFetch || 0;
       const prog = total > 0 ? job.processed / total : undefined;
+      touchJob(job);
       updateStage(job, 'collect', { status: 'running', progress: prog, detail: `已完成 ${job.processed}/${total || '?'} ` });
     }
     const mOk = line.match(/目录获取成功:\s*(\d+)\/(\d+)/);
@@ -63,12 +65,14 @@ function parseLineForStages(job: JobRecord, line: string) {
     const mOut = line.match(/\[完成\] 输出文件:\s*(.+\.json)\s*$/);
     if (mOut) {
       job.outputPath = mOut[1].trim();
+      touchJob(job);
       // derive log path from slug-timestamp naming
       try {
         const base = path.basename(job.outputPath); // slug-integrated-<ts>.json
         const dir = path.dirname(job.outputPath);
         const logName = base.replace(/\.json$/i, '.log');
         job.logPath = path.join(dir, logName);
+        touchJob(job);
         broadcast(job, 'file', { outPath: job.outputPath, logPath: job.logPath });
       } catch {}
     }
@@ -76,11 +80,13 @@ function parseLineForStages(job: JobRecord, line: string) {
 }
 
 export function startIntegrated(params: IntegratedParams) {
+  console.log('[pipeline] startIntegrated invoked with params:', params);
   const job = createJob('outline', {
     subject: params.subject,
     learningStyle: params.learningStyle,
     expectedContent: params.expectedContent,
   });
+  console.log('[pipeline] startIntegrated createJob id=', job.id, 'subject=', params.subject);
 
   const py = process.env.PYTHON || 'python';
   const script = path.join(repoRoot(), 'scripts', 'pipelines', 'langgraph', 'integrated_textbook_pipeline_chained.py');
@@ -104,6 +110,8 @@ export function startIntegrated(params: IntegratedParams) {
 
   const child = spawn(py, args, { cwd: repoRoot(), env: process.env });
   job.pid = child.pid;
+  console.log('[pipeline] startIntegrated spawned process:', { pid: child.pid, args, cwd: repoRoot() });
+  touchJob(job);
 
   // 立即广播当前阶段为“运行中”，给前端即时反馈
   updateStage(job, 'collect', { status: 'running', detail: '启动脚本中…' });
@@ -127,6 +135,7 @@ export function startIntegrated(params: IntegratedParams) {
   child.stderr.on('data', onData);
 
   child.on('close', (code) => {
+    console.log('[pipeline] outline child close event:', { pid: child.pid, code });
     if (code === 0) {
       finishJob(job.id, 'success');
       broadcast(job, 'end', { status: 'success', outputPath: job.outputPath, logPath: job.logPath });
@@ -136,6 +145,7 @@ export function startIntegrated(params: IntegratedParams) {
     }
   });
   child.on('error', (err) => {
+    console.log('[pipeline] outline child error event:', err);
     finishJob(job.id, 'error');
     broadcast(job, 'log', { line: `[orchestrator] spawn error: ${String(err?.message || err)}` });
     broadcast(job, 'end', { status: 'error', message: String(err?.message || err) });

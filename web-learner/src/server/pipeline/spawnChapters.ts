@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs/promises';
-import { broadcast, createJob, finishJob, JobRecord, updateStage } from './jobManager';
+import { broadcast, createJob, finishJob, JobRecord, touchJob, updateStage } from './jobManager';
 
 export interface GenerateContentParams {
   inputPath: string; // integrated JSON path
@@ -139,6 +139,7 @@ function parseLine(
     const mReport = line.match(/报告已写出\s*:\s*(.+)$/);
     if (mReport) {
       job.outputPath = mReport[1].trim();
+      touchJob(job);
       // 试着推导 log 与发布目录并广播
       try {
         const base = path.basename(job.outputPath || ''); // pipeline_report_<slug>.md
@@ -149,6 +150,7 @@ function parseLine(
           // 约定调试日志
           const logPath = path.join(repoRoot(), 'output', slug, 'log.txt');
           job.logPath = logPath;
+          touchJob(job);
           broadcast(job, 'file', { reportPath: job.outputPath, publishDir, logPath });
         } else {
           broadcast(job, 'file', { reportPath: job.outputPath });
@@ -167,11 +169,13 @@ function parseLine(
 
 export async function startChapters(params: GenerateContentParams) {
   const { inputPath } = params;
+  console.log('[pipeline] startChapters invoked with params:', params);
   const meta = await deriveTopicFromIntegrated(inputPath);
   const totals = await computeSectionTotals(inputPath);
   const job = createJob('content', {
     subject: meta.subject,
   });
+  console.log('[pipeline] startChapters createJob id=', job.id, 'subject=', meta.subject, 'totals=', totals);
 
   const py = process.env.PYTHON || 'python';
   const script = path.join(repoRoot(), 'scripts', 'pipelines', 'generation', 'generate_chapters_from_integrated_standalone.py');
@@ -182,6 +186,7 @@ export async function startChapters(params: GenerateContentParams) {
     '--input', inputPath,
     '--config', path.join(repoRoot(), 'config.json'),
   ];
+  args.push('--skip-content-review');
   if (params.selectedChapters && params.selectedChapters.trim()) {
     args.push('--selected-chapters', params.selectedChapters.trim());
   }
@@ -193,9 +198,12 @@ export async function startChapters(params: GenerateContentParams) {
   await fs.mkdir(dbgLogDir, { recursive: true }).catch(() => {});
   const dbgLogPath = path.join(dbgLogDir, 'log.txt');
   job.logPath = dbgLogPath;
+  touchJob(job);
 
   const child = spawn(py, args, { cwd: repoRoot(), env: process.env });
   job.pid = child.pid;
+  console.log('[pipeline] startChapters spawned process:', { pid: child.pid, args, cwd: repoRoot() });
+  touchJob(job);
 
   // 初始阶段
   updateStage(job, 'content', {
@@ -227,6 +235,7 @@ export async function startChapters(params: GenerateContentParams) {
   child.stderr.on('data', onData);
 
   child.on('close', (code) => {
+    console.log('[pipeline] content child close event:', { pid: child.pid, code });
     if (code === 0) {
       finishJob(job.id, 'success');
       broadcast(job, 'end', { status: 'success', outputPath: job.outputPath, logPath: job.logPath });
@@ -237,6 +246,7 @@ export async function startChapters(params: GenerateContentParams) {
     }
   });
   child.on('error', (err) => {
+    console.log('[pipeline] content child error event:', err);
     finishJob(job.id, 'error');
     updateStage(job, 'content', { status: 'error', detail: '进程启动失败' });
     broadcast(job, 'log', { line: `[orchestrator] spawn error: ${String(err?.message || err)}` });

@@ -150,7 +150,7 @@ export function ThemeGenerator() {
   useEffect(() => {
     if (!rehydrated) {
       rehydrated = true;
-      useThemeGeneratorStore.getState().rehydrate();
+      void useThemeGeneratorStore.getState().rehydrate();
     }
   }, []);
 

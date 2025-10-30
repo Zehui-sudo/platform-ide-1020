@@ -22,7 +22,7 @@ import re
 import sys
 from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import time
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
@@ -54,6 +54,11 @@ CHAPTER_SCRIPT = (
 EXECUTION_OUTPUT_LIMIT = 10_000
 DEFAULT_EXECUTION_TIMEOUT = 10.0
 MAX_EXECUTION_TIMEOUT = 30.0
+
+CHINA_TZ = timezone(timedelta(hours=8))
+
+JOBS_STATE_DIR = REPO_ROOT / "output" / "pipeline_jobs"
+JOBS_STATE_FILE = JOBS_STATE_DIR / "jobs.json"
 
 
 # ----------------------------
@@ -150,6 +155,8 @@ class JobManager:
     def __init__(self) -> None:
         self._jobs: Dict[str, JobRecord] = {}
         self._logger = logging.getLogger("JobManager")
+        self._load_jobs_from_disk()
+        self._persist_jobs()
 
     def create_job(
         self,
@@ -168,6 +175,7 @@ class JobManager:
             expected_content=expected_content,
         )
         self._jobs[job_id] = job
+        self._persist_jobs()
         return job
 
     def get(self, job_id: str) -> Optional[JobRecord]:
@@ -176,6 +184,7 @@ class JobManager:
     def finish(self, job: JobRecord, status: str) -> None:
         job.status = status
         job.end_ts = datetime.utcnow().timestamp()
+        self._persist_jobs()
 
     def attach(self, job: JobRecord) -> Tuple[str, "asyncio.Queue[Dict[str, Any]]"]:
         client_id = uuid4().hex
@@ -211,7 +220,109 @@ class JobManager:
             job.stages[stage_id] = stage
         stage.apply(patch)
         self.broadcast(job, "stage", stage.to_dict())
+        self._persist_jobs()
         return stage
+
+    def touch(self, job: JobRecord) -> None:
+        if job.id not in self._jobs:
+            self._jobs[job.id] = job
+        self._persist_jobs()
+
+    def list_jobs(self) -> List[JobRecord]:
+        return list(self._jobs.values())
+
+    def latest_job(self, job_type: str) -> Optional[JobRecord]:
+        candidates = [job for job in self._jobs.values() if job.type == job_type]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda job: job.start_ts)
+
+    def _serialize_job(self, job: JobRecord) -> Dict[str, Any]:
+        data = job.snapshot()
+        data["pid"] = job.pid
+        data["totalToFetch"] = job.total_to_fetch
+        data["processed"] = job.processed
+        start_dt = datetime.fromtimestamp(job.start_ts, tz=timezone.utc).astimezone(CHINA_TZ)
+        data["startTimeIso"] = start_dt.isoformat()
+        if job.end_ts is not None:
+            end_dt = datetime.fromtimestamp(job.end_ts, tz=timezone.utc).astimezone(CHINA_TZ)
+            data["endTimeIso"] = end_dt.isoformat()
+        return data
+
+    def _persist_jobs(self) -> None:
+        try:
+            JOBS_STATE_DIR.mkdir(parents=True, exist_ok=True)
+            payload = [self._serialize_job(job) for job in self._jobs.values()]
+            JOBS_STATE_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as exc:
+            self._logger.warning("Failed to persist jobs: %s", exc)
+
+    def _load_jobs_from_disk(self) -> None:
+        if not JOBS_STATE_FILE.exists():
+            return
+        try:
+            text = JOBS_STATE_FILE.read_text(encoding="utf-8")
+            items = json.loads(text)
+        except Exception as exc:
+            self._logger.warning("Failed to load jobs from disk: %s", exc)
+            return
+        if not isinstance(items, list):
+            return
+        for item in items:
+            try:
+                job_id = str(item.get("id") or "").strip()
+                job_type = str(item.get("type") or "outline")
+                if not job_id:
+                    continue
+                start_ts = item.get("startTs")
+                try:
+                    start_ts_val = float(start_ts) if start_ts is not None else datetime.utcnow().timestamp()
+                except (TypeError, ValueError):
+                    start_ts_val = datetime.utcnow().timestamp()
+                if isinstance(start_ts, str):
+                    with suppress(Exception):
+                        start_ts_val = datetime.fromisoformat(start_ts.replace("Z", "+00:00")).timestamp()
+                start_time_iso = item.get("startTimeIso")
+                if isinstance(start_time_iso, str):
+                    with suppress(Exception):
+                        start_ts_val = datetime.fromisoformat(start_time_iso.replace("Z", "+00:00")).timestamp()
+                job = JobRecord(
+                    id=job_id,
+                    type=job_type,
+                    status=str(item.get("status") or "running"),
+                    start_ts=start_ts_val,
+                    end_ts=item.get("endTs"),
+                    subject=item.get("subject"),
+                    learning_style=item.get("learningStyle"),
+                    expected_content=item.get("expectedContent"),
+                    output_path=item.get("outputPath"),
+                    log_path=item.get("logPath"),
+                    total_to_fetch=item.get("totalToFetch"),
+                    processed=item.get("processed"),
+                    pid=item.get("pid"),
+                )
+                if isinstance(item.get("endTimeIso"), str):
+                    with suppress(Exception):
+                        job.end_ts = datetime.fromisoformat(item["endTimeIso"].replace("Z", "+00:00")).timestamp()
+                stages_data = item.get("stages") or {}
+                if isinstance(stages_data, dict):
+                    job.stages = {}
+                    for stage_id, stage_payload in stages_data.items():
+                        if not isinstance(stage_payload, dict):
+                            continue
+                        stage = StageState(
+                            id=str(stage_id),
+                            label=str(stage_payload.get("label") or stage_id),
+                            status=str(stage_payload.get("status") or "pending"),
+                            progress=stage_payload.get("progress"),
+                            detail=stage_payload.get("detail"),
+                        )
+                        job.stages[str(stage_id)] = stage
+                if not job.stages:
+                    job.stages = _default_stages()
+                self._jobs[job_id] = job
+            except Exception as exc:
+                self._logger.warning("Skipping persisted job due to error: %s", exc)
 
 
 job_manager = JobManager()
@@ -221,6 +332,14 @@ logger = logging.getLogger("api_server")
 # ----------------------------
 # 工具函数
 # ----------------------------
+
+
+def _job_payload(job: JobRecord) -> Dict[str, Any]:
+    data = job.snapshot()
+    data["pid"] = job.pid
+    data["totalToFetch"] = job.total_to_fetch
+    data["processed"] = job.processed
+    return data
 
 def _format_sse(event: str, data: Any) -> bytes:
     payload = json.dumps(data, ensure_ascii=False)
@@ -370,6 +489,7 @@ def _parse_outline_line(job: JobRecord, line: str) -> None:
             job.log_path = str(base.with_suffix(".log"))
         except Exception:
             job.log_path = None
+        job_manager.touch(job)
         job_manager.broadcast(job, "file", {"outPath": job.output_path, "logPath": job.log_path})
 
 
@@ -545,6 +665,7 @@ def _parse_content_line(
                 job_manager.broadcast(job, "file", {"reportPath": report_path})
         except Exception:
             job_manager.broadcast(job, "file", {"reportPath": report_path})
+        job_manager.touch(job)
         return
 
     if "✅" in text and "完成" in text or "完成。无报告可显示。" in text:
@@ -707,6 +828,7 @@ async def _run_outline_job(
 
     job.process = process
     job.pid = process.pid
+    job_manager.touch(job)
 
     job_manager.update_stage(job, "collect", {"status": "running", "detail": "启动脚本中…"})
     job_manager.broadcast(job, "log", {"line": f"[orchestrator] spawn: {' '.join(args)}"})
@@ -790,6 +912,7 @@ async def _run_content_job(
     log_dir = REPO_ROOT / "output" / topic_slug
     _ensure_exists(log_dir)
     job.log_path = str(log_dir / "log.txt")
+    job_manager.touch(job)
 
     env = os.environ.copy()
     process = await asyncio.create_subprocess_exec(
@@ -802,6 +925,7 @@ async def _run_content_job(
 
     job.process = process
     job.pid = process.pid
+    job_manager.touch(job)
 
     initial_detail = f"初稿 0/{total}" if total > 0 else "启动脚本中…"
     job_manager.update_stage(
@@ -924,6 +1048,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/api/pipeline/jobs")
+async def pipeline_jobs() -> JSONResponse:
+    jobs = [_job_payload(job) for job in job_manager.list_jobs()]
+    jobs.sort(key=lambda item: item.get("startTs") or 0, reverse=True)
+    return JSONResponse({"jobs": jobs})
+
+
+@app.get("/api/pipeline/jobs/latest")
+async def pipeline_jobs_latest(type: str) -> JSONResponse:
+    job = job_manager.latest_job(type)
+    if not job:
+        return JSONResponse({"job": None})
+    return JSONResponse({"job": _job_payload(job)})
+
+
+@app.get("/api/pipeline/jobs/{job_id}")
+async def pipeline_jobs_detail(job_id: str) -> JSONResponse:
+    job = job_manager.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="job not found")
+    return JSONResponse({"job": _job_payload(job)})
 
 
 @app.get("/")

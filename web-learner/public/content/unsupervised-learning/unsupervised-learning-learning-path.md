@@ -1,4 +1,4 @@
-# 无监督学习 (id: unsupervised-learning)
+--skip-content-review# 无监督学习 (id: unsupervised-learning)
 
 ## 第1章：第一章：导论 · 在没有标签的世界里寻找答案 (id: unsup-ch-1)
 ### 第一章：导论 · 在没有标签的世界里寻找答案 (id: unsup-ch-1-gr-1)

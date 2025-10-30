@@ -6,6 +6,7 @@ export const runtime = 'nodejs';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    console.log('[pipeline] /api/outline/start body:', body);
     const subject = String(body?.subject || '').trim();
     const learningStyle = String(body?.learningStyle || '').trim().toLowerCase();
     const expectedContent = String(body?.expectedContent || '').trim();
