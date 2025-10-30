@@ -1,0 +1,734 @@
+{
+  "id": "javascript-basics",
+  "title": "JavaScript 核心基础",
+  "subject": "javascript",
+  "chapters": [
+    {
+      "id": "js-ch-1",
+      "title": "第1章：基础语法与逻辑构建",
+      "groups": [
+        {
+          "id": "js-gr-1-1",
+          "title": "变量与值",
+          "sections": [
+            {
+              "id": "js-sec-1-1-1-变量声明（var-let-const）",
+              "title": "变量声明",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-1-2-基本数据类型（number-string-boolean）",
+              "title": "基本数据类型",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-1-3-特殊值（null-undefined-NaN）",
+              "title": "特殊值",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-1-4-类型检测与转换",
+              "title": "类型检测与转换",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-1-5-作用域与提升",
+              "title": "作用域与提升",
+              "chapterId": "js-ch-1"
+            }
+          ]
+        },
+        {
+          "id": "js-gr-1-2",
+          "title": "运算符与表达式",
+          "sections": [
+            {
+              "id": "js-sec-1-2-1-算术运算符",
+              "title": "算术运算符",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-2-2-比较运算符（==-===）",
+              "title": "比较运算符",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-2-3-逻辑运算符（&&-||-!）",
+              "title": "逻辑运算符",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-2-4-赋值运算符",
+              "title": "赋值运算符",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-2-5-条件运算符（三元）",
+              "title": "条件运算符",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-2-6-运算符优先级",
+              "title": "运算符优先级",
+              "chapterId": "js-ch-1"
+            }
+          ]
+        },
+        {
+          "id": "js-gr-1-3",
+          "title": "控制流",
+          "sections": [
+            {
+              "id": "js-sec-1-3-1-if-else-条件判断",
+              "title": "if-else-条件判断",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-3-2-switch-case-分支",
+              "title": "switch-case-分支",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-3-3-for-循环",
+              "title": "for-循环",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-3-4-while-do-while-循环",
+              "title": "while-do-while-循环",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-3-5-break-continue-控制",
+              "title": "break-continue-控制",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-3-6-循环性能与优化",
+              "title": "循环性能与优化",
+              "chapterId": "js-ch-1"
+            }
+          ]
+        },
+        {
+          "id": "js-gr-1-4",
+          "title": "函数基础",
+          "sections": [
+            {
+              "id": "js-sec-1-4-1-函数声明与表达式",
+              "title": "函数声明与表达式",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-4-2-参数与返回值",
+              "title": "参数与返回值",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-4-3-箭头函数",
+              "title": "箭头函数",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-4-4-默认参数与剩余参数",
+              "title": "默认参数与剩余参数",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-4-5-函数作用域",
+              "title": "函数作用域",
+              "chapterId": "js-ch-1"
+            },
+            {
+              "id": "js-sec-1-4-6-递归基础",
+              "title": "递归基础",
+              "chapterId": "js-ch-1"
+            }
+          ]
+        }
+      ],
+      "sections": []
+    },
+    {
+      "id": "js-ch-2",
+      "title": "第2章：复合数据类型",
+      "groups": [
+        {
+          "id": "js-gr-2-1",
+          "title": "数组",
+          "sections": [
+            {
+              "id": "js-sec-2-1-1-数组创建与访问",
+              "title": "数组创建与访问",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-1-2-数组基础方法（push-pop-shift-unshift）",
+              "title": "数组基础方法",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-1-3-数组遍历（for-forEach）",
+              "title": "数组遍历",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-1-4-数组转换方法（map-filter-reduce）",
+              "title": "数组转换方法",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-1-5-数组查找与判断（find-some-every）",
+              "title": "数组查找与判断",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-1-6-数组排序与反转",
+              "title": "数组排序与反转",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-1-7-数组解构赋值",
+              "title": "数组解构赋值",
+              "chapterId": "js-ch-2"
+            }
+          ]
+        },
+        {
+          "id": "js-gr-2-2",
+          "title": "对象",
+          "sections": [
+            {
+              "id": "js-sec-2-2-1-对象创建与属性访问",
+              "title": "对象创建与属性访问",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-2-2-属性的增删改查",
+              "title": "属性的增删改查",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-2-3-对象方法与this",
+              "title": "对象方法与this",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-2-4-对象遍历",
+              "title": "对象遍历",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-2-5-对象解构赋值",
+              "title": "对象解构赋值",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-2-6-JSON序列化",
+              "title": "JSON序列化",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-2-7-对象的浅拷贝与深拷贝",
+              "title": "对象的浅拷贝与深拷贝",
+              "chapterId": "js-ch-2"
+            }
+          ]
+        },
+        {
+          "id": "js-gr-2-3",
+          "title": "字符串进阶",
+          "sections": [
+            {
+              "id": "js-sec-2-3-1-字符串方法（substring-slice）",
+              "title": "字符串方法",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-3-2-字符串查找（indexOf-includes）",
+              "title": "字符串查找",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-3-3-字符串替换与分割",
+              "title": "字符串替换与分割",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-3-4-模板字符串",
+              "title": "模板字符串",
+              "chapterId": "js-ch-2"
+            },
+            {
+              "id": "js-sec-2-3-5-正则表达式基础",
+              "title": "正则表达式基础",
+              "chapterId": "js-ch-2"
+            }
+          ]
+        }
+      ],
+      "sections": []
+    },
+    {
+      "id": "js-ch-3",
+      "title": "第3章：函数进阶",
+      "groups": [
+        {
+          "id": "js-gr-3-1",
+          "title": "高阶函数",
+          "sections": [
+            {
+              "id": "js-sec-3-1-1-函数作为参数",
+              "title": "函数作为参数",
+              "chapterId": "js-ch-3"
+            },
+            {
+              "id": "js-sec-3-1-2-函数作为返回值",
+              "title": "函数作为返回值",
+              "chapterId": "js-ch-3"
+            },
+            {
+              "id": "js-sec-3-1-3-闭包概念与应用",
+              "title": "闭包概念与应用",
+              "chapterId": "js-ch-3"
+            },
+            {
+              "id": "js-sec-3-1-4-柯里化",
+              "title": "柯里化",
+              "chapterId": "js-ch-3"
+            },
+            {
+              "id": "js-sec-3-1-5-函数组合",
+              "title": "函数组合",
+              "chapterId": "js-ch-3"
+            }
+          ]
+        },
+        {
+          "id": "js-gr-3-2",
+          "title": "this与上下文",
+          "sections": [
+            {
+              "id": "js-sec-3-2-1-this的四种绑定规则",
+              "title": "this的四种绑定规则",
+              "chapterId": "js-ch-3"
+            },
+            {
+              "id": "js-sec-3-2-2-call-apply-bind",
+              "title": "call-apply-bind",
+              "chapterId": "js-ch-3"
+            },
+            {
+              "id": "js-sec-3-2-3-箭头函数的this",
+              "title": "箭头函数的this",
+              "chapterId": "js-ch-3"
+            },
+            {
+              "id": "js-sec-3-2-4-常见this陷阱",
+              "title": "常见this陷阱",
+              "chapterId": "js-ch-3"
+            }
+          ]
+        }
+      ],
+      "sections": []
+    },
+    {
+      "id": "js-ch-4",
+      "title": "第4章：面向对象编程",
+      "groups": [
+        {
+          "id": "js-gr-4-1",
+          "title": "构造函数与原型",
+          "sections": [
+            {
+              "id": "js-sec-4-1-1-构造函数",
+              "title": "构造函数",
+              "chapterId": "js-ch-4"
+            },
+            {
+              "id": "js-sec-4-1-2-prototype原型",
+              "title": "prototype原型",
+              "chapterId": "js-ch-4"
+            },
+            {
+              "id": "js-sec-4-1-3-原型链",
+              "title": "原型链",
+              "chapterId": "js-ch-4"
+            },
+            {
+              "id": "js-sec-4-1-4-instanceof原理",
+              "title": "instanceof原理",
+              "chapterId": "js-ch-4"
+            }
+          ]
+        },
+        {
+          "id": "js-gr-4-2",
+          "title": "类与继承",
+          "sections": [
+            {
+              "id": "js-sec-4-2-1-class声明",
+              "title": "class声明",
+              "chapterId": "js-ch-4"
+            },
+            {
+              "id": "js-sec-4-2-2-构造器与属性",
+              "title": "构造器与属性",
+              "chapterId": "js-ch-4"
+            },
+            {
+              "id": "js-sec-4-2-3-方法定义",
+              "title": "方法定义",
+              "chapterId": "js-ch-4"
+            },
+            {
+              "id": "js-sec-4-2-4-继承extends",
+              "title": "继承extends",
+              "chapterId": "js-ch-4"
+            },
+            {
+              "id": "js-sec-4-2-5-super关键字",
+              "title": "super关键字",
+              "chapterId": "js-ch-4"
+            },
+            {
+              "id": "js-sec-4-2-6-静态方法与属性",
+              "title": "静态方法与属性",
+              "chapterId": "js-ch-4"
+            }
+          ]
+        }
+      ],
+      "sections": []
+    },
+    {
+      "id": "js-ch-5",
+      "title": "第5章：异步编程",
+      "groups": [
+        {
+          "id": "js-gr-5-1",
+          "title": "异步基础",
+          "sections": [
+            {
+              "id": "js-sec-5-1-1-同步vs异步",
+              "title": "同步vs异步",
+              "chapterId": "js-ch-5"
+            },
+            {
+              "id": "js-sec-5-1-2-事件循环机制",
+              "title": "事件循环机制",
+              "chapterId": "js-ch-5"
+            },
+            {
+              "id": "js-sec-5-1-3-定时器（setTimeout-setInterval）",
+              "title": "定时器",
+              "chapterId": "js-ch-5"
+            },
+            {
+              "id": "js-sec-5-1-4-回调函数",
+              "title": "回调函数",
+              "chapterId": "js-ch-5"
+            }
+          ]
+        },
+        {
+          "id": "js-gr-5-2",
+          "title": "Promise",
+          "sections": [
+            {
+              "id": "js-sec-5-2-1-Promise基础",
+              "title": "Promise基础",
+              "chapterId": "js-ch-5"
+            },
+            {
+              "id": "js-sec-5-2-2-then-catch-finally",
+              "title": "then-catch-finally",
+              "chapterId": "js-ch-5"
+            },
+            {
+              "id": "js-sec-5-2-3-Promise链式调用",
+              "title": "Promise链式调用",
+              "chapterId": "js-ch-5"
+            },
+            {
+              "id": "js-sec-5-2-4-Promise.all-race",
+              "title": "Promise.all-race",
+              "chapterId": "js-ch-5"
+            },
+            {
+              "id": "js-sec-5-2-5-错误处理",
+              "title": "错误处理",
+              "chapterId": "js-ch-5"
+            }
+          ]
+        },
+        {
+          "id": "js-gr-5-3",
+          "title": "async/await",
+          "sections": [
+            {
+              "id": "js-sec-5-3-1-async函数",
+              "title": "async函数",
+              "chapterId": "js-ch-5"
+            },
+            {
+              "id": "js-sec-5-3-2-await表达式",
+              "title": "await表达式",
+              "chapterId": "js-ch-5"
+            },
+            {
+              "id": "js-sec-5-3-3-错误处理",
+              "title": "错误处理",
+              "chapterId": "js-ch-5"
+            },
+            {
+              "id": "js-sec-5-3-4-并发控制",
+              "title": "并发控制",
+              "chapterId": "js-ch-5"
+            },
+            {
+              "id": "js-sec-5-3-5-实战应用",
+              "title": "实战应用",
+              "chapterId": "js-ch-5"
+            }
+          ]
+        }
+      ],
+      "sections": []
+    },
+    {
+      "id": "js-ch-6",
+      "title": "第6章：DOM与事件",
+      "groups": [
+        {
+          "id": "js-gr-6-1",
+          "title": "DOM操作",
+          "sections": [
+            {
+              "id": "js-sec-6-1-1-元素选择",
+              "title": "元素选择",
+              "chapterId": "js-ch-6"
+            },
+            {
+              "id": "js-sec-6-1-2-内容修改",
+              "title": "内容修改",
+              "chapterId": "js-ch-6"
+            },
+            {
+              "id": "js-sec-6-1-3-属性操作",
+              "title": "属性操作",
+              "chapterId": "js-ch-6"
+            },
+            {
+              "id": "js-sec-6-1-4-样式操作",
+              "title": "样式操作",
+              "chapterId": "js-ch-6"
+            },
+            {
+              "id": "js-sec-6-1-5-元素创建与插入",
+              "title": "元素创建与插入",
+              "chapterId": "js-ch-6"
+            },
+            {
+              "id": "js-sec-6-1-6-元素删除",
+              "title": "元素删除",
+              "chapterId": "js-ch-6"
+            }
+          ]
+        },
+        {
+          "id": "js-gr-6-2",
+          "title": "事件",
+          "sections": [
+            {
+              "id": "js-sec-6-2-1-事件监听",
+              "title": "事件监听",
+              "chapterId": "js-ch-6"
+            },
+            {
+              "id": "js-sec-6-2-2-事件对象",
+              "title": "事件对象",
+              "chapterId": "js-ch-6"
+            },
+            {
+              "id": "js-sec-6-2-3-事件冒泡与捕获",
+              "title": "事件冒泡与捕获",
+              "chapterId": "js-ch-6"
+            },
+            {
+              "id": "js-sec-6-2-4-事件委托",
+              "title": "事件委托",
+              "chapterId": "js-ch-6"
+            },
+            {
+              "id": "js-sec-6-2-5-常用事件类型",
+              "title": "常用事件类型",
+              "chapterId": "js-ch-6"
+            },
+            {
+              "id": "js-sec-6-2-6-自定义事件",
+              "title": "自定义事件",
+              "chapterId": "js-ch-6"
+            }
+          ]
+        }
+      ],
+      "sections": []
+    },
+    {
+      "id": "js-ch-7",
+      "title": "第7章：现代语法与模块",
+      "groups": [
+        {
+          "id": "js-gr-7-1",
+          "title": "解构赋值进阶",
+          "sections": [
+            {
+              "id": "js-sec-7-1-1-解构赋值进阶",
+              "title": "解构赋值进阶",
+              "chapterId": "js-ch-7"
+            },
+            {
+              "id": "js-sec-7-1-2-展开运算符",
+              "title": "展开运算符",
+              "chapterId": "js-ch-7"
+            },
+            {
+              "id": "js-sec-7-1-3-Set与Map",
+              "title": "Set与Map",
+              "chapterId": "js-ch-7"
+            },
+            {
+              "id": "js-sec-7-1-4-Symbol类型",
+              "title": "Symbol类型",
+              "chapterId": "js-ch-7"
+            },
+            {
+              "id": "js-sec-7-1-5-Proxy与Reflect",
+              "title": "Proxy与Reflect",
+              "chapterId": "js-ch-7"
+            }
+          ]
+        },
+        {
+          "id": "js-gr-7-2",
+          "title": "模块系统",
+          "sections": [
+            {
+              "id": "js-sec-7-2-1-模块导出export",
+              "title": "模块导出export",
+              "chapterId": "js-ch-7"
+            },
+            {
+              "id": "js-sec-7-2-2-模块导入import",
+              "title": "模块导入import",
+              "chapterId": "js-ch-7"
+            },
+            {
+              "id": "js-sec-7-2-3-默认导出",
+              "title": "默认导出",
+              "chapterId": "js-ch-7"
+            },
+            {
+              "id": "js-sec-7-2-4-动态导入",
+              "title": "动态导入",
+              "chapterId": "js-ch-7"
+            }
+          ]
+        },
+        {
+          "id": "js-gr-7-3",
+          "title": "错误处理",
+          "sections": [
+            {
+              "id": "js-sec-7-3-1-try-catch-finally",
+              "title": "try-catch-finally",
+              "chapterId": "js-ch-7"
+            },
+            {
+              "id": "js-sec-7-3-2-Error对象",
+              "title": "Error对象",
+              "chapterId": "js-ch-7"
+            },
+            {
+              "id": "js-sec-7-3-3-自定义错误",
+              "title": "自定义错误",
+              "chapterId": "js-ch-7"
+            },
+            {
+              "id": "js-sec-7-3-4-异步错误处理",
+              "title": "异步错误处理",
+              "chapterId": "js-ch-7"
+            }
+          ]
+        }
+      ],
+      "sections": []
+    },
+    {
+      "id": "js-ch-8",
+      "title": "第8章：网络与存储",
+      "groups": [
+        {
+          "id": "js-gr-8-1",
+          "title": "网络请求",
+          "sections": [
+            {
+              "id": "js-sec-8-1-1-fetch基础",
+              "title": "fetch基础",
+              "chapterId": "js-ch-8"
+            },
+            {
+              "id": "js-sec-8-1-2-请求配置",
+              "title": "请求配置",
+              "chapterId": "js-ch-8"
+            },
+            {
+              "id": "js-sec-8-1-3-响应处理",
+              "title": "响应处理",
+              "chapterId": "js-ch-8"
+            },
+            {
+              "id": "js-sec-8-1-4-错误处理",
+              "title": "错误处理",
+              "chapterId": "js-ch-8"
+            },
+            {
+              "id": "js-sec-8-1-5-请求拦截",
+              "title": "请求拦截",
+              "chapterId": "js-ch-8"
+            }
+          ]
+        },
+        {
+          "id": "js-gr-8-2",
+          "title": "浏览器存储",
+          "sections": [
+            {
+              "id": "js-sec-8-2-1-Cookie",
+              "title": "Cookie",
+              "chapterId": "js-ch-8"
+            },
+            {
+              "id": "js-sec-8-2-2-LocalStorage",
+              "title": "LocalStorage",
+              "chapterId": "js-ch-8"
+            },
+            {
+              "id": "js-sec-8-2-3-SessionStorage",
+              "title": "SessionStorage",
+              "chapterId": "js-ch-8"
+            },
+            {
+              "id": "js-sec-8-2-4-IndexedDB基础",
+              "title": "IndexedDB基础",
+              "chapterId": "js-ch-8"
+            }
+          ]
+        }
+      ],
+      "sections": []
+    }
+  ]
+}

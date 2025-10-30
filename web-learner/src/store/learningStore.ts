@@ -39,106 +39,167 @@ const cleanTitle = (input: string): string => {
 const normalizeForComparison = (input: string): string =>
   cleanTitle(input).replace(/\s+/g, '').toLowerCase();
 
+type LearningConfig = {
+  subjects: string[];
+  pathMap?: Partial<Record<string, string | null>>;
+  labelMap?: Record<string, string>;
+};
+
+const learningConfigEndpoints = ['/learn-data/learning-config.json', '/api/learning-config'] as const;
+const configCache = new Map<string, LearningConfig>();
+
+const fetchLearningConfigFromEndpoint = async (endpoint: string): Promise<LearningConfig | null> => {
+  if (configCache.has(endpoint)) {
+    return configCache.get(endpoint)!;
+  }
+  try {
+    const res = await fetch(endpoint, { cache: 'no-store' });
+    if (!res.ok) {
+      return null;
+    }
+    const data = await res.json() as LearningConfig;
+    const normalized: LearningConfig = {
+      subjects: Array.isArray(data.subjects) ? data.subjects : [],
+      pathMap: data.pathMap || {},
+      labelMap: data.labelMap || {},
+    };
+    configCache.set(endpoint, normalized);
+    return normalized;
+  } catch (error) {
+    console.warn('[learningStore] 加载配置失败', { endpoint, error });
+    return null;
+  }
+};
+
+const getLearningConfig = async (): Promise<LearningConfig> => {
+  for (const endpoint of learningConfigEndpoints) {
+    const cfg = await fetchLearningConfigFromEndpoint(endpoint);
+    if (cfg && (cfg.subjects.length > 0 || (cfg.pathMap && Object.keys(cfg.pathMap).length > 0))) {
+      return cfg;
+    }
+  }
+  throw new Error('无法加载学习路径配置');
+};
+
+const parseMarkdownLearningPath = (markdown: string, subject: string): LearningPath => {
+  const lines = markdown.split('\n');
+  const path: LearningPath = { id: '', title: '', subject, chapters: [] };
+  let currentChapter: Chapter | null = null;
+  let currentGroup: { id: string; title: string; sections: Section[] } | null = null;
+  const idRegex = /\(id: (.*?)\)/;
+
+  const pathLine = lines.find((line) => line.startsWith('# '));
+  if (pathLine) {
+    path.title = pathLine.replace('# ', '').replace(idRegex, '').trim();
+    const pathIdMatch = pathLine.match(idRegex);
+    if (pathIdMatch) path.id = pathIdMatch[1];
+  }
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.startsWith('## ')) {
+      const rawTitle = line.replace('## ', '').replace(idRegex, '').trim();
+      const title = cleanTitle(rawTitle);
+      const idMatch = line.match(idRegex);
+      if (idMatch) {
+        currentChapter = { id: idMatch[1], title, groups: [], sections: [] };
+        path.chapters.push(currentChapter);
+        currentGroup = null;
+      }
+    } else if (line.startsWith('### ') && currentChapter) {
+      const rawTitle = line.replace('### ', '').replace(idRegex, '').trim();
+      const title = cleanTitle(rawTitle);
+      const idMatch = line.match(idRegex);
+      if (idMatch) {
+        const group = { id: idMatch[1], title, sections: [] as Section[] };
+        if (!currentChapter.groups) currentChapter.groups = [];
+        currentChapter.groups.push(group);
+        currentGroup = group;
+      }
+    } else if (line.startsWith('#### ') && currentChapter) {
+      const rawTitle = line.replace('#### ', '').replace(idRegex, '').trim();
+      const title = cleanTitle(rawTitle);
+      const idMatch = line.match(idRegex);
+      if (idMatch) {
+        const section = {
+          id: idMatch[1],
+          title,
+          chapterId: currentChapter.id,
+        };
+        if (currentGroup) {
+          currentGroup.sections.push(section);
+        } else {
+          if (!currentChapter.sections) currentChapter.sections = [];
+          currentChapter.sections.push(section);
+        }
+      }
+    }
+  }
+  path.chapters = path.chapters.map((chapter, index) => {
+    let groups = chapter.groups ? [...chapter.groups] : [];
+    let sections = chapter.sections ? [...chapter.sections] : [];
+
+    if (groups.length === 1) {
+      const [group] = groups;
+      if (normalizeForComparison(group.title) === normalizeForComparison(chapter.title)) {
+        sections = [...sections, ...group.sections];
+        groups = [];
+      }
+    }
+
+    return {
+      ...chapter,
+      title: `第${index + 1}章：${chapter.title}`,
+      groups,
+      sections,
+    };
+  });
+  return path;
+};
+
 // Mock API functions - replace with real API calls
 const mockLearningApi = {
   getLearningPath: async (subject: string): Promise<LearningPath> => {
-    await new Promise(resolve => setTimeout(resolve, 100)); // Simulate API delay
-
-    // Discover learning path location dynamically from API
-    const cfgRes = await fetch('/api/learning-config');
-    if (!cfgRes.ok) {
-      throw new Error('Failed to discover subjects');
-    }
-    const cfg = await cfgRes.json() as { subjects: string[]; pathMap: Partial<Record<string, string|null>> };
-    const markdownPath = cfg.pathMap?.[subject] || null;
-    if (!markdownPath) {
-      throw new Error(`No learning path found for subject: ${subject}`);
+    const config = await getLearningConfig();
+    const available = config.subjects || [];
+    let targetLang = subject;
+    if (available.length > 0 && !available.includes(subject)) {
+      targetLang = available[0];
     }
 
-    const response = await fetch(markdownPath);
+    let resourcePath = config.pathMap?.[targetLang] || null;
+    if (!resourcePath) {
+      const apiCfg = await fetchLearningConfigFromEndpoint('/api/learning-config');
+      if (apiCfg?.pathMap?.[targetLang]) {
+        resourcePath = apiCfg.pathMap[targetLang];
+      }
+    }
+
+    if (!resourcePath) {
+      throw new Error(`No learning path found for subject: ${targetLang}`);
+    }
+
+    if (resourcePath.endsWith('.json')) {
+      const res = await fetch(resourcePath, { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error(`Failed to fetch ${resourcePath}`);
+      }
+      const json = await res.json() as LearningPath;
+      return {
+        ...json,
+        subject: json.subject || targetLang,
+      };
+    }
+
+    const response = await fetch(resourcePath);
     if (!response.ok) {
-      throw new Error(`Failed to fetch ${markdownPath}`);
+      throw new Error(`Failed to fetch ${resourcePath}`);
     }
     const markdown = await response.text();
-
-    const lines = markdown.split('\n');
-    const path: LearningPath = { id: '', title: '', subject, chapters: [] };
-    let currentChapter: Chapter | null = null;
-    let currentGroup: { id: string; title: string; sections: Section[] } | null = null;
-    const idRegex = /\(id: (.*?)\)/;
-
-    const pathLine = lines.find(line => line.startsWith('# '));
-    if (pathLine) {
-      path.title = pathLine.replace('# ', '').replace(idRegex, '').trim();
-      const pathIdMatch = pathLine.match(idRegex);
-      if (pathIdMatch) path.id = pathIdMatch[1];
-    }
-
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (line.startsWith('## ')) {
-        const rawTitle = line.replace('## ', '').replace(idRegex, '').trim();
-        const title = cleanTitle(rawTitle);
-        const idMatch = line.match(idRegex);
-        if (idMatch) {
-          currentChapter = { id: idMatch[1], title, groups: [], sections: [] };
-          path.chapters.push(currentChapter);
-          currentGroup = null;
-        }
-      } else if (line.startsWith('### ') && currentChapter) {
-        const rawTitle = line.replace('### ', '').replace(idRegex, '').trim();
-        const title = cleanTitle(rawTitle);
-        const idMatch = line.match(idRegex);
-        if (idMatch) {
-          const group = { id: idMatch[1], title, sections: [] as Section[] };
-          if (!currentChapter.groups) currentChapter.groups = [];
-          currentChapter.groups.push(group);
-          currentGroup = group;
-        }
-      } else if (line.startsWith('#### ') && currentChapter) {
-        const rawTitle = line.replace('#### ', '').replace(idRegex, '').trim();
-        const title = cleanTitle(rawTitle);
-        const idMatch = line.match(idRegex);
-        if (idMatch) {
-          const section = {
-            id: idMatch[1],
-            title,
-            chapterId: currentChapter.id,
-          };
-          if (currentGroup) {
-            currentGroup.sections.push(section);
-          } else {
-            if (!currentChapter.sections) currentChapter.sections = [];
-            currentChapter.sections.push(section);
-          }
-        }
-      }
-    }
-    path.chapters = path.chapters.map((chapter, index) => {
-      let groups = chapter.groups ? [...chapter.groups] : [];
-      let sections = chapter.sections ? [...chapter.sections] : [];
-
-      if (groups.length === 1) {
-        const [group] = groups;
-        if (normalizeForComparison(group.title) === normalizeForComparison(chapter.title)) {
-          sections = [...sections, ...group.sections];
-          groups = [];
-        }
-      }
-
-      return {
-        ...chapter,
-        title: `第${index + 1}章：${chapter.title}`,
-        groups,
-        sections,
-      };
-    });
-    return path;
+    return parseMarkdownLearningPath(markdown, targetLang);
   },
 
   getSectionContent: async (sectionId: string, currentSubject?: string): Promise<SectionContent> => {
-    await new Promise(resolve => setTimeout(resolve, 100));
-
     try {
       // Resolve the concrete markdown file by id-prefix within the selected language folder
       const pref = typeof window !== 'undefined' ? (localStorage.getItem('preferred-subject') || localStorage.getItem('preferred-language')) : null;
@@ -279,14 +340,19 @@ export const useLearningStore = create<LearningState & LearningActions>()(
       currentPath: null,
       currentSection: null,
       loadedPaths: {}, // 初始化为空对象
+      loadedSections: {}, // 节内容缓存
       availableSubjects: undefined,
       subjectPathMap: undefined,
+      subjectLabels: undefined,
       loading: {
         path: false,
         section: false,
         allPaths: false,
       },
       loadingPathSubject: null,
+      pendingPathRequestId: null,
+      pendingSectionRequestId: null,
+      allPathsPrefetchScheduled: false,
       error: {
         path: null,
         section: null,
@@ -343,10 +409,12 @@ export const useLearningStore = create<LearningState & LearningActions>()(
       
       discoverSubjects: async () => {
         try {
-          const res = await fetch('/api/learning-config');
-          if (!res.ok) throw new Error('Failed to fetch learning-config');
-          const data = await res.json() as { subjects: string[]; pathMap: Partial<Record<string, string|null>>; labelMap?: Record<string, string> };
-          set({ availableSubjects: data.subjects, subjectPathMap: data.pathMap, subjectLabels: data.labelMap || {} });
+          const cfg = await getLearningConfig();
+          set({
+            availableSubjects: cfg.subjects,
+            subjectPathMap: cfg.pathMap,
+            subjectLabels: cfg.labelMap || {},
+          });
         } catch (e) {
           // If discovery fails, leave state undefined and let downstream handlers fallback
           console.warn('discoverSubjects failed', e);
@@ -354,52 +422,87 @@ export const useLearningStore = create<LearningState & LearningActions>()(
       },
       initializeAllPaths: async () => {
         const state = get();
-        if (state.loading.allPaths) return;
-        
-        set(state => ({
-          loading: { ...state.loading, allPaths: true },
-          error: { ...state.error, path: null }
-        }));
-        
-        try {
-          // Auto-discover subjects and load their learning paths
-          await get().discoverSubjects();
-          const langs = get().availableSubjects && get().availableSubjects!.length > 0
-            ? get().availableSubjects!
-            : (['python','javascript','astrology','langgraph'] as string[]);
+        if (state.loading.allPaths || state.allPathsPrefetchScheduled) return;
 
-          const results = await Promise.allSettled(
-            langs.map(l => mockLearningApi.getLearningPath(l))
-          );
+        set({ allPathsPrefetchScheduled: true });
 
-          const loadedPaths: Record<string, LearningPath> = {};
-          results.forEach((r, idx) => {
-            if (r.status === 'fulfilled') {
-              const lang = langs[idx];
-              loadedPaths[lang] = r.value;
+        const runPrefetch = async () => {
+          set(current => ({
+            loading: { ...current.loading, allPaths: true },
+            error: { ...current.error, path: null }
+          }));
+
+          try {
+            if (!get().availableSubjects) {
+              await get().discoverSubjects();
             }
-          });
-          
-          set({
-            loadedPaths,
-            loading: { ...get().loading, allPaths: false },
-            error: { ...get().error, path: null }
-          });
-          
-          // 初始化知识点服务
-          const knowledgeLinkService = getKnowledgeLinkService();
-          await knowledgeLinkService.initialize(loadedPaths);
-          
-          // 如果没有聊天会话，创建一个默认的
-          if (get().chatSessions.length === 0) {
-            get().createNewChat();
+            const snapshot = get();
+            const langs = snapshot.availableSubjects && snapshot.availableSubjects.length > 0
+              ? snapshot.availableSubjects
+              : (['python','javascript','astrology','langgraph'] as string[]);
+            const currentSubject = snapshot.currentPath?.subject || snapshot.preferredSubject || null;
+            const loadedPathsSnapshot = snapshot.loadedPaths || {};
+
+            const subjectsToPrefetch = langs.filter(lang =>
+              lang !== currentSubject && !loadedPathsSnapshot[lang]
+            );
+
+            if (subjectsToPrefetch.length === 0) {
+              set(current => ({
+                loading: { ...current.loading, allPaths: false },
+                allPathsPrefetchScheduled: false,
+              }));
+              return;
+            }
+
+            for (const subject of subjectsToPrefetch) {
+              try {
+                if (get().loadedPaths[subject]) {
+                  continue;
+                }
+                const path = await mockLearningApi.getLearningPath(subject);
+                set(prev => ({
+                  loadedPaths: {
+                    ...prev.loadedPaths,
+                    [subject]: path,
+                  },
+                }));
+                await new Promise(resolve => setTimeout(resolve, 160));
+              } catch (prefetchError) {
+                console.warn('[initializeAllPaths] 预取失败', { subject, prefetchError });
+              }
+            }
+
+            const knowledgeLinkService = getKnowledgeLinkService();
+            await knowledgeLinkService.initialize(get().loadedPaths);
+            
+            if (get().chatSessions.length === 0) {
+              get().createNewChat();
+            }
+
+            set(current => ({
+              loading: { ...current.loading, allPaths: false },
+              error: { ...current.error, path: null },
+              allPathsPrefetchScheduled: false,
+            }));
+          } catch (error) {
+            set(current => ({
+              loading: { ...current.loading, allPaths: false },
+              error: { ...current.error, path: error instanceof Error ? error.message : 'Failed to initialize paths' },
+              allPathsPrefetchScheduled: false,
+            }));
           }
-        } catch (error) {
-          set({
-            loading: { ...get().loading, allPaths: false },
-            error: { ...get().error, path: error instanceof Error ? error.message : 'Failed to initialize paths' }
+        };
+
+        setTimeout(() => {
+          runPrefetch().catch(err => {
+            console.warn('[initializeAllPaths] 后台预取失败', err);
+            set(current => ({
+              loading: { ...current.loading, allPaths: false },
+              allPathsPrefetchScheduled: false,
+            }));
           });
-        }
+        }, 400);
       },
       
       loadPath: async (subject: string) => {
@@ -413,14 +516,17 @@ export const useLearningStore = create<LearningState & LearningActions>()(
           timestamp: new Date().toISOString()
         });
         
-        if ((state.loading.path && state.loadingPathSubject === subject) || state.currentPath?.subject === subject) {
+        if (state.currentPath?.subject === subject) {
           console.log('%c[Store.loadPath] ⏭️ 跳过 - 已加载或正在加载', 'color: gray', { subject });
           return;
         }
+
+        const requestId = `${subject}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         
         set(state => ({
           loading: { ...state.loading, path: true },
           loadingPathSubject: subject,
+          pendingPathRequestId: requestId,
           error: { ...state.error, path: null }
         }));
 
@@ -436,11 +542,60 @@ export const useLearningStore = create<LearningState & LearningActions>()(
             targetLang = available[0];
           }
 
+          const cachedPath = get().loadedPaths[targetLang];
+          if (cachedPath) {
+            if (get().pendingPathRequestId !== requestId) {
+              console.log('%c[Store.loadPath] 🔄 忽略过期缓存结果', 'color: gray', {
+                subject: targetLang,
+                requestId,
+              });
+              return;
+            }
+
+            const snapshotBeforeSet = get();
+
+            console.log('%c[Store.loadPath] ⚡ 命中缓存', 'color: green', {
+              subject: targetLang,
+              chaptersCount: cachedPath.chapters.length,
+              timestamp: new Date().toISOString()
+            });
+
+            set({
+              currentPath: cachedPath,
+              loading: { ...snapshotBeforeSet.loading, path: false },
+              loadingPathSubject: null,
+              pendingPathRequestId: null,
+              error: { ...snapshotBeforeSet.error, path: null },
+              preferredSubject: targetLang,
+            });
+
+            try {
+              localStorage.setItem('preferred-subject', targetLang);
+              localStorage.setItem('preferred-language', targetLang);
+            } catch {}
+
+            if (get().chatSessions.length === 0) {
+              get().createNewChat();
+            }
+
+            return;
+          }
+
           const path = await mockLearningApi.getLearningPath(targetLang);
+
+          if (get().pendingPathRequestId !== requestId) {
+            console.log('%c[Store.loadPath] 🔄 忽略过期结果', 'color: gray', {
+              subject: targetLang,
+              requestId,
+            });
+            return;
+          }
+
+          const snapshotBeforeSet = get();
           
           // Update loadedPaths with the new path
           const updatedLoadedPaths = {
-            ...get().loadedPaths,
+            ...snapshotBeforeSet.loadedPaths,
             [targetLang]: path
           };
           
@@ -454,9 +609,10 @@ export const useLearningStore = create<LearningState & LearningActions>()(
           set({
             currentPath: path,
             loadedPaths: updatedLoadedPaths,
-            loading: { ...get().loading, path: false },
+            loading: { ...snapshotBeforeSet.loading, path: false },
             loadingPathSubject: null,
-            error: { ...get().error, path: null },
+            pendingPathRequestId: null,
+            error: { ...snapshotBeforeSet.error, path: null },
             preferredSubject: targetLang,
           });
 
@@ -476,10 +632,15 @@ export const useLearningStore = create<LearningState & LearningActions>()(
           }
 
         } catch (error) {
+          if (get().pendingPathRequestId !== requestId) {
+            return;
+          }
+          const snapshotOnError = get();
           set({
-            loading: { ...get().loading, path: false },
+            loading: { ...snapshotOnError.loading, path: false },
             loadingPathSubject: null,
-            error: { ...get().error, path: error instanceof Error ? error.message : 'Failed to load learning path' }
+            pendingPathRequestId: null,
+            error: { ...snapshotOnError.error, path: error instanceof Error ? error.message : 'Failed to load learning path' }
           });
         }
       },
@@ -495,10 +656,57 @@ export const useLearningStore = create<LearningState & LearningActions>()(
           timestamp: new Date().toISOString()
         });
         
-        if (state.loading.section || state.currentSection?.id === sectionId) {
-          console.log('%c[Store.loadSection] ⏭️ 跳过 - 已加载或正在加载', 'color: gray', { sectionId });
+        if (state.currentSection?.id === sectionId) {
+          console.log('%c[Store.loadSection] ⏭️ 跳过 - 已加载', 'color: gray', { sectionId });
           return;
         }
+
+        const getCacheKey = (subject?: string | null, id: string = sectionId) =>
+          subject ? `${subject}::${id}` : id;
+        const candidateSubject = state.currentPath?.subject || state.loadingPathSubject || state.preferredSubject || null;
+        let cacheKey = getCacheKey(candidateSubject);
+        const cachedSection = state.loadedSections?.[cacheKey];
+
+        const maybePrefetchNeighbors = (subject?: string | null) => {
+          if (!subject) return;
+          setTimeout(() => {
+            const snapshot = get();
+            const pathSnapshot = snapshot.currentPath;
+            if (!pathSnapshot || pathSnapshot.subject !== subject) return;
+            const sectionsFlat = pathSnapshot.chapters.flatMap(ch =>
+              (ch.sections && ch.sections.length > 0)
+                ? ch.sections
+                : (ch.groups || []).flatMap(g => g.sections)
+            );
+            const currentIndex = sectionsFlat.findIndex(s => s.id === sectionId);
+            if (currentIndex === -1) return;
+            const neighborIds = [
+              sectionsFlat[currentIndex + 1]?.id,
+              sectionsFlat[currentIndex - 1]?.id,
+            ].filter((id): id is string => Boolean(id));
+
+            neighborIds.forEach((neighborId) => {
+              const neighborKey = getCacheKey(subject, neighborId);
+              const latest = get();
+              if (latest.loadedSections[neighborKey]) return;
+              mockLearningApi.getSectionContent(neighborId, subject)
+                .then((content) => {
+                  const afterFetch = get();
+                  if (afterFetch.currentPath?.subject !== subject) return;
+                  if (afterFetch.loadedSections[neighborKey]) return;
+                  set(prev => ({
+                    loadedSections: {
+                      ...prev.loadedSections,
+                      [neighborKey]: content,
+                    },
+                  }));
+                })
+                .catch((prefetchError) => {
+                  console.debug('%c[Store.loadSection] 预取失败', 'color: gray', { neighborId, prefetchError });
+                });
+            });
+          }, 50);
+        };
         
         // ⚠️ 验证 section 是否属于当前 path
         if (state.currentPath) {
@@ -514,45 +722,91 @@ export const useLearningStore = create<LearningState & LearningActions>()(
             });
           }
         }
+
+        if (cachedSection) {
+          console.log('%c[Store.loadSection] ⚡ 命中缓存', 'color: teal', { sectionId, cacheKey });
+          set({
+            currentSection: cachedSection,
+            loading: { ...state.loading, section: false },
+            pendingSectionRequestId: null,
+            error: { ...state.error, section: null },
+            lastOpenedSectionId: sectionId,
+          });
+
+          try {
+            localStorage.setItem('last-opened-section', sectionId);
+            const subjectToPersist = get().currentPath?.subject || candidateSubject;
+            if (subjectToPersist) {
+              localStorage.setItem('preferred-subject', subjectToPersist);
+              localStorage.setItem('preferred-language', subjectToPersist);
+            }
+          } catch {}
+
+          maybePrefetchNeighbors(get().currentPath?.subject || candidateSubject);
+          return;
+        }
+
+        const requestId = `${sectionId}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         
-        set(state => ({
-          loading: { ...state.loading, section: true },
-          error: { ...state.error, section: null }
+        set(current => ({
+          loading: { ...current.loading, section: true },
+          pendingSectionRequestId: requestId,
+          error: { ...current.error, section: null }
         }));
 
         try {
-          const fallbackSubject = get().currentPath?.subject;
+          const fallbackSubject = get().currentPath?.subject || candidateSubject;
           console.log('%c[Store.loadSection] 🔍 获取 Section 内容', 'color: teal', {
             sectionId,
             fallbackSubject
           });
-          const content = await mockLearningApi.getSectionContent(sectionId, fallbackSubject);
+          const content = await mockLearningApi.getSectionContent(sectionId, fallbackSubject || undefined);
           console.log('%c[Store.loadSection] ✅ 成功加载 Section', 'color: teal; font-weight: bold', {
             sectionId,
             blocksCount: content.contentBlocks.length,
             timestamp: new Date().toISOString()
           });
+
+          if (get().pendingSectionRequestId !== requestId) {
+            console.log('%c[Store.loadSection] 🔄 忽略过期结果', 'color: gray', { sectionId, requestId });
+            return;
+          }
+
+          const snapshotBeforeSet = get();
+          const resolvedSubject = snapshotBeforeSet.currentPath?.subject || fallbackSubject || candidateSubject;
+          cacheKey = getCacheKey(resolvedSubject);
           
           set({
             currentSection: content,
-            loading: { ...get().loading, section: false },
-            error: { ...get().error, section: null },
+            loading: { ...snapshotBeforeSet.loading, section: false },
+            pendingSectionRequestId: null,
+            error: { ...snapshotBeforeSet.error, section: null },
             lastOpenedSectionId: sectionId,
+            loadedSections: {
+              ...snapshotBeforeSet.loadedSections,
+              [cacheKey]: content,
+            },
           });
 
           // Persist last opened section and current subject for reloads
           try {
             localStorage.setItem('last-opened-section', sectionId);
-            const curSubject = get().currentPath?.subject;
-            if (curSubject) {
-              localStorage.setItem('preferred-subject', curSubject);
-              localStorage.setItem('preferred-language', curSubject);
+            if (resolvedSubject) {
+              localStorage.setItem('preferred-subject', resolvedSubject);
+              localStorage.setItem('preferred-language', resolvedSubject);
             }
           } catch {}
+
+          maybePrefetchNeighbors(resolvedSubject);
         } catch (error) {
+          if (get().pendingSectionRequestId !== requestId) {
+            return;
+          }
+          const snapshotOnError = get();
           set({
-            loading: { ...get().loading, section: false },
-            error: { ...state.error, section: error instanceof Error ? error.message : 'Failed to load section content' }
+            loading: { ...snapshotOnError.loading, section: false },
+            pendingSectionRequestId: null,
+            error: { ...snapshotOnError.error, section: error instanceof Error ? error.message : 'Failed to load section content' }
           });
         }
       },

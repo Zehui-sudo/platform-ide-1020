@@ -1,0 +1,112 @@
+{
+  "id": "cloud-server-deployment",
+  "title": "云端服务器部署",
+  "subject": "cloud-server-deployment",
+  "chapters": [
+    {
+      "id": "dep-ch-1",
+      "title": "第1章：舞台搭建 · 为什么是云，而不是我的电脑？",
+      "groups": [],
+      "sections": [
+        {
+          "id": "dep-sec-1-1",
+          "title": "根本问题：当我的应用用户遍布全球时，我的笔记本电脑够用吗？",
+          "chapterId": "dep-ch-1"
+        },
+        {
+          "id": "dep-sec-1-2",
+          "title": "核心思想：像用电一样使用计算资源",
+          "chapterId": "dep-ch-1"
+        }
+      ]
+    },
+    {
+      "id": "dep-ch-2",
+      "title": "第2章：标准集装箱 · 如何让我的应用在任何地方都能完美运行？",
+      "groups": [],
+      "sections": [
+        {
+          "id": "dep-sec-2-1",
+          "title": "根本问题：“在我电脑上明明是好的！”",
+          "chapterId": "dep-ch-2"
+        },
+        {
+          "id": "dep-sec-2-2",
+          "title": "核心思想：软件的“集装箱”化",
+          "chapterId": "dep-ch-2"
+        }
+      ]
+    },
+    {
+      "id": "dep-ch-3",
+      "title": "第3章：自动化工厂 · 如何将代码可靠、持续地送上云端？",
+      "groups": [],
+      "sections": [
+        {
+          "id": "dep-sec-3-1",
+          "title": "根本问题：如何避免“上线如上战场”的手动部署噩梦？",
+          "chapterId": "dep-ch-3"
+        },
+        {
+          "id": "dep-sec-3-2",
+          "title": "核心框架：CI/CD流水线",
+          "chapterId": "dep-ch-3"
+        }
+      ]
+    },
+    {
+      "id": "dep-ch-4",
+      "title": "第4章：应用蓝图 · 如何在云上组装一个完整应用？",
+      "groups": [],
+      "sections": [
+        {
+          "id": "dep-sec-4-1",
+          "title": "核心问题：我的前后端分离应用需要哪些云端“积木”？",
+          "chapterId": "dep-ch-4"
+        },
+        {
+          "id": "dep-sec-4-2",
+          "title": "工具箱一：计算服务",
+          "chapterId": "dep-ch-4"
+        },
+        {
+          "id": "dep-sec-4-3",
+          "title": "工具箱二：存储与数据库",
+          "chapterId": "dep-ch-4"
+        },
+        {
+          "id": "dep-sec-4-4",
+          "title": "工具箱三：网络服务",
+          "chapterId": "dep-ch-4"
+        }
+      ]
+    },
+    {
+      "id": "dep-ch-5",
+      "title": "第5章：系统进化 · 如何让我的应用更强大、更可靠？",
+      "groups": [],
+      "sections": [
+        {
+          "id": "dep-sec-5-1",
+          "title": "根本问题：访问量突增时，如何避免服务崩溃？",
+          "chapterId": "dep-ch-5"
+        },
+        {
+          "id": "dep-sec-5-2",
+          "title": "核心工具一：负载均衡器",
+          "chapterId": "dep-ch-5"
+        },
+        {
+          "id": "dep-sec-5-3",
+          "title": "核心工具二：自动伸缩",
+          "chapterId": "dep-ch-5"
+        },
+        {
+          "id": "dep-sec-5-4",
+          "title": "核心工具三：监控与告警",
+          "chapterId": "dep-ch-5"
+        }
+      ]
+    }
+  ]
+}

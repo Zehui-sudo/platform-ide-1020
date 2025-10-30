@@ -1,0 +1,173 @@
+{
+  "id": "python",
+  "title": "Python",
+  "subject": "python",
+  "chapters": [
+    {
+      "id": "py-ch-1",
+      "title": "第1章：Python 基础与核心概念",
+      "groups": [],
+      "sections": [
+        {
+          "id": "py-sec-1-1",
+          "title": "变量、数据类型与运算符",
+          "chapterId": "py-ch-1"
+        },
+        {
+          "id": "py-sec-1-2",
+          "title": "字符串操作",
+          "chapterId": "py-ch-1"
+        }
+      ]
+    },
+    {
+      "id": "py-ch-2",
+      "title": "第2章：核心数据结构",
+      "groups": [],
+      "sections": [
+        {
+          "id": "py-sec-2-1",
+          "title": "列表与元组",
+          "chapterId": "py-ch-2"
+        },
+        {
+          "id": "py-sec-2-2",
+          "title": "字典与集合",
+          "chapterId": "py-ch-2"
+        }
+      ]
+    },
+    {
+      "id": "py-ch-3",
+      "title": "第3章：逻辑与控制流",
+      "groups": [],
+      "sections": [
+        {
+          "id": "py-sec-3-1",
+          "title": "条件判断",
+          "chapterId": "py-ch-3"
+        },
+        {
+          "id": "py-sec-3-2",
+          "title": "循环结构",
+          "chapterId": "py-ch-3"
+        }
+      ]
+    },
+    {
+      "id": "py-ch-4",
+      "title": "第4章：函数——代码的复用与抽象",
+      "groups": [],
+      "sections": [
+        {
+          "id": "py-sec-4-1",
+          "title": "函数的定义与调用",
+          "chapterId": "py-ch-4"
+        },
+        {
+          "id": "py-sec-4-2",
+          "title": "变量作用域",
+          "chapterId": "py-ch-4"
+        },
+        {
+          "id": "py-sec-4-3",
+          "title": "高级函数特性",
+          "chapterId": "py-ch-4"
+        }
+      ]
+    },
+    {
+      "id": "py-ch-5",
+      "title": "第5章：面向对象编程",
+      "groups": [],
+      "sections": [
+        {
+          "id": "py-sec-5-1",
+          "title": "类与实例",
+          "chapterId": "py-ch-5"
+        },
+        {
+          "id": "py-sec-5-2",
+          "title": "继承与多态",
+          "chapterId": "py-ch-5"
+        },
+        {
+          "id": "py-sec-5-3",
+          "title": "魔术方法与封装",
+          "chapterId": "py-ch-5"
+        }
+      ]
+    },
+    {
+      "id": "py-ch-6",
+      "title": "第6章：模块化与错误处理",
+      "groups": [],
+      "sections": [
+        {
+          "id": "py-sec-6-1",
+          "title": "模块与包",
+          "chapterId": "py-ch-6"
+        },
+        {
+          "id": "py-sec-6-2",
+          "title": "异常处理",
+          "chapterId": "py-ch-6"
+        },
+        {
+          "id": "py-sec-6-3",
+          "title": "文件操作",
+          "chapterId": "py-ch-6"
+        }
+      ]
+    },
+    {
+      "id": "py-ch-7",
+      "title": "第7章：Pythonic 编程范式",
+      "groups": [],
+      "sections": [
+        {
+          "id": "py-sec-7-1",
+          "title": "推导式与生成器表达式",
+          "chapterId": "py-ch-7"
+        },
+        {
+          "id": "py-sec-7-2",
+          "title": "生成器函数",
+          "chapterId": "py-ch-7"
+        },
+        {
+          "id": "py-sec-7-3",
+          "title": "装饰器",
+          "chapterId": "py-ch-7"
+        }
+      ]
+    },
+    {
+      "id": "py-ch-8",
+      "title": "第8章：并发与异步编程",
+      "groups": [],
+      "sections": [
+        {
+          "id": "py-sec-8-1",
+          "title": "并发编程概念",
+          "chapterId": "py-ch-8"
+        },
+        {
+          "id": "py-sec-8-2",
+          "title": "传统并发模型：线程与进程",
+          "chapterId": "py-ch-8"
+        },
+        {
+          "id": "py-sec-8-3",
+          "title": "现代异步编程：asyncio 核心",
+          "chapterId": "py-ch-8"
+        },
+        {
+          "id": "py-sec-8-4",
+          "title": "asyncio 实战应用",
+          "chapterId": "py-ch-8"
+        }
+      ]
+    }
+  ]
+}

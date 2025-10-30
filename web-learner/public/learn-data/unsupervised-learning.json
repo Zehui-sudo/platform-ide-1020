@@ -1,0 +1,100 @@
+{
+  "id": "unsupervised-learning",
+  "title": "无监督学习",
+  "subject": "unsupervised-learning",
+  "chapters": [
+    {
+      "id": "unsup-ch-1",
+      "title": "第1章：导论 · 在没有标签的世界里寻找答案",
+      "groups": [],
+      "sections": [
+        {
+          "id": "unsup-sec-1-1",
+          "title": "根本问题：当数据没有“正确答案”时，我们能学到什么？",
+          "chapterId": "unsup-ch-1"
+        },
+        {
+          "id": "unsup-sec-1-2",
+          "title": "核心挑战：如何衡量“好”的结构？",
+          "chapterId": "unsup-ch-1"
+        }
+      ]
+    },
+    {
+      "id": "unsup-ch-2",
+      "title": "第2章：聚类分析 · 数据的自然分组",
+      "groups": [],
+      "sections": [
+        {
+          "id": "unsup-sec-2-1",
+          "title": "核心思想：物以类聚，人以群分",
+          "chapterId": "unsup-ch-2"
+        },
+        {
+          "id": "unsup-sec-2-2",
+          "title": "工具一：K-Means 算法及其变体",
+          "chapterId": "unsup-ch-2"
+        },
+        {
+          "id": "unsup-sec-2-3",
+          "title": "工具二：凝聚与分裂的艺术",
+          "chapterId": "unsup-ch-2"
+        },
+        {
+          "id": "unsup-sec-2-4",
+          "title": "工具三：DBSCAN 算法",
+          "chapterId": "unsup-ch-2"
+        }
+      ]
+    },
+    {
+      "id": "unsup-ch-3",
+      "title": "第3章：降维 · 在复杂性中寻找简洁性",
+      "groups": [],
+      "sections": [
+        {
+          "id": "unsup-sec-3-1",
+          "title": "根本问题：为何高维数据是“诅咒”？",
+          "chapterId": "unsup-ch-3"
+        },
+        {
+          "id": "unsup-sec-3-2",
+          "title": "线性降维的核心机制：主成分分析",
+          "chapterId": "unsup-ch-3"
+        },
+        {
+          "id": "unsup-sec-3-3",
+          "title": "非线性降维与可视化：t-SNE",
+          "chapterId": "unsup-ch-3"
+        }
+      ]
+    },
+    {
+      "id": "unsup-ch-4",
+      "title": "第4章：高级主题与应用",
+      "groups": [],
+      "sections": [
+        {
+          "id": "unsup-sec-4-1",
+          "title": "工具一：关联规则挖掘",
+          "chapterId": "unsup-ch-4"
+        },
+        {
+          "id": "unsup-sec-4-2",
+          "title": "工具二：识别“害群之马”",
+          "chapterId": "unsup-ch-4"
+        },
+        {
+          "id": "unsup-sec-4-3",
+          "title": "工具三：高斯混合模型与EM算法",
+          "chapterId": "unsup-ch-4"
+        },
+        {
+          "id": "unsup-sec-4-4",
+          "title": "课程总结与展望：如何选择合适的无监督模型？",
+          "chapterId": "unsup-ch-4"
+        }
+      ]
+    }
+  ]
+}

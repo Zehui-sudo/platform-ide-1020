@@ -1,0 +1,95 @@
+{
+  "id": "web-media-encryption",
+  "title": "Web 媒体加密",
+  "subject": "web-media-encryption",
+  "chapters": [
+    {
+      "id": "wme-ch-1",
+      "title": "第1章：奠定基石 · 为什么Web媒体需要加密？",
+      "groups": [],
+      "sections": [
+        {
+          "id": "wme-sec-1-1",
+          "title": "根本问题：在开放的互联网上传输媒体面临哪些核心风险？",
+          "chapterId": "wme-ch-1"
+        },
+        {
+          "id": "wme-sec-1-2",
+          "title": "核心思想：密码学的两大基石",
+          "chapterId": "wme-ch-1"
+        }
+      ]
+    },
+    {
+      "id": "wme-ch-2",
+      "title": "第2章：构建安全隧道 · 深入解析传输层安全性协议",
+      "groups": [],
+      "sections": [
+        {
+          "id": "wme-sec-2-1",
+          "title": "根本问题：如何在不可信的网络上建立一个可信的通信信道？",
+          "chapterId": "wme-ch-2"
+        },
+        {
+          "id": "wme-sec-2-2",
+          "title": "拆解关键机制：TLS 1.3 握手全过程",
+          "chapterId": "wme-ch-2"
+        },
+        {
+          "id": "wme-sec-2-3",
+          "title": "信任的根基：证书颁发机构与信任链",
+          "chapterId": "wme-ch-2"
+        },
+        {
+          "id": "wme-sec-2-4",
+          "title": "优势与局限：TLS能做什么，不能做什么？",
+          "chapterId": "wme-ch-2"
+        }
+      ]
+    },
+    {
+      "id": "wme-ch-3",
+      "title": "第3章：保护内容本身 · 数字版权管理核心体系",
+      "groups": [],
+      "sections": [
+        {
+          "id": "wme-sec-3-1",
+          "title": "根本问题：如何控制内容在客户端解密后的使用权限？",
+          "chapterId": "wme-ch-3"
+        },
+        {
+          "id": "wme-sec-3-2",
+          "title": "拆解关键机制：一次完整的DRM播放流程",
+          "chapterId": "wme-ch-3"
+        },
+        {
+          "id": "wme-sec-3-3",
+          "title": "核心技术工具箱：构成现代DRM体系的关键组件",
+          "chapterId": "wme-ch-3"
+        },
+        {
+          "id": "wme-sec-3-4",
+          "title": "主流DRM方案对比：Google Widevine, Microsoft PlayReady, Apple FairPlay",
+          "chapterId": "wme-ch-3"
+        }
+      ]
+    },
+    {
+      "id": "wme-ch-4",
+      "title": "第4章：系统整合与实践 · 构建端到端的安全媒体分发系统",
+      "groups": [],
+      "sections": [
+        {
+          "id": "wme-sec-4-1",
+          "title": "案例研究：当你在Netflix上点击“播放”时，究竟发生了什么？",
+          "chapterId": "wme-ch-4"
+        },
+        {
+          "id": "wme-sec-4-2",
+          "title": "实践指南：如何为你的视频应用选择合适的加密策略？",
+          "chapterId": "wme-ch-4"
+        }
+      ]
+    }
+  ]
+}

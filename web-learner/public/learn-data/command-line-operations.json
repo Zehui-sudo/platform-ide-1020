@@ -1,0 +1,154 @@
+{
+  "id": "command-line-operations",
+  "title": "命令行操作",
+  "subject": "command-line-operations",
+  "chapters": [
+    {
+      "id": "cli-ch-1",
+      "title": "第1章：命令行世界：初识与核心概念",
+      "groups": [],
+      "sections": [
+        {
+          "id": "cli-sec-1-1",
+          "title": "Shell 的角色：你与操作系统的对话",
+          "chapterId": "cli-ch-1"
+        },
+        {
+          "id": "cli-sec-1-2",
+          "title": "文件系统导航：你的数字地图",
+          "chapterId": "cli-ch-1"
+        },
+        {
+          "id": "cli-sec-1-3",
+          "title": "命令的解剖：语法与结构",
+          "chapterId": "cli-ch-1"
+        },
+        {
+          "id": "cli-sec-1-4",
+          "title": "学会求助：内建的说明书",
+          "chapterId": "cli-ch-1"
+        }
+      ]
+    },
+    {
+      "id": "cli-ch-2",
+      "title": "第2章：日常文件与目录管理",
+      "groups": [],
+      "sections": [
+        {
+          "id": "cli-sec-2-1",
+          "title": "查看文件内容：只读不改",
+          "chapterId": "cli-ch-2"
+        },
+        {
+          "id": "cli-sec-2-2",
+          "title": "文件与目录的增删改",
+          "chapterId": "cli-ch-2"
+        },
+        {
+          "id": "cli-sec-2-3",
+          "title": "查找文件与内容：大海捞针",
+          "chapterId": "cli-ch-2"
+        }
+      ]
+    },
+    {
+      "id": "cli-ch-3",
+      "title": "第3章：命令行的力量：管道与重定向",
+      "groups": [],
+      "sections": [
+        {
+          "id": "cli-sec-3-1",
+          "title": "I/O 重定向：改变输入和输出",
+          "chapterId": "cli-ch-3"
+        },
+        {
+          "id": "cli-sec-3-2",
+          "title": "管道 `|`：Unix 哲学的核心",
+          "chapterId": "cli-ch-3"
+        },
+        {
+          "id": "cli-sec-3-3",
+          "title": "文本处理三剑客：`grep`, `sed`, `awk`",
+          "chapterId": "cli-ch-3"
+        }
+      ]
+    },
+    {
+      "id": "cli-ch-4",
+      "title": "第4章：系统与进程管理",
+      "groups": [],
+      "sections": [
+        {
+          "id": "cli-sec-4-1",
+          "title": "用户与权限：谁能做什么",
+          "chapterId": "cli-ch-4"
+        },
+        {
+          "id": "cli-sec-4-2",
+          "title": "进程管理：程序的生与死",
+          "chapterId": "cli-ch-4"
+        },
+        {
+          "id": "cli-sec-4-3",
+          "title": "环境变量与别名：定制你的 Shell",
+          "chapterId": "cli-ch-4"
+        }
+      ]
+    },
+    {
+      "id": "cli-ch-5",
+      "title": "第5章：开发者必备工具集",
+      "groups": [],
+      "sections": [
+        {
+          "id": "cli-sec-5-1",
+          "title": "远程连接：SSH",
+          "chapterId": "cli-ch-5"
+        },
+        {
+          "id": "cli-sec-5-2",
+          "title": "版本控制：Git",
+          "chapterId": "cli-ch-5"
+        },
+        {
+          "id": "cli-sec-5-3",
+          "title": "容器化：Docker",
+          "chapterId": "cli-ch-5"
+        },
+        {
+          "id": "cli-sec-5-4",
+          "title": "网络工具：`curl` 与 `ping`",
+          "chapterId": "cli-ch-5"
+        }
+      ]
+    },
+    {
+      "id": "cli-ch-6",
+      "title": "第6章：迈向自动化：Shell 脚本编程",
+      "groups": [],
+      "sections": [
+        {
+          "id": "cli-sec-6-1",
+          "title": "你的第一个脚本",
+          "chapterId": "cli-ch-6"
+        },
+        {
+          "id": "cli-sec-6-2",
+          "title": "变量与参数",
+          "chapterId": "cli-ch-6"
+        },
+        {
+          "id": "cli-sec-6-3",
+          "title": "逻辑控制：`if` 与 `for`",
+          "chapterId": "cli-ch-6"
+        },
+        {
+          "id": "cli-sec-6-4",
+          "title": "综合项目：自动化备份脚本",
+          "chapterId": "cli-ch-6"
+        }
+      ]
+    }
+  ]
+}

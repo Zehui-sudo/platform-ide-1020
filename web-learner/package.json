@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "node ./scripts/generate-font-manifest.mjs",
+    "predev": "node ./scripts/generate-learn-data.mjs && node ./scripts/generate-font-manifest.mjs",
     "dev": "next dev",
-    "prebuild": "node ./scripts/generate-font-manifest.mjs",
+    "prebuild": "node ./scripts/generate-learn-data.mjs && node ./scripts/generate-font-manifest.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

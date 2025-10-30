@@ -1,0 +1,112 @@
+{
+  "id": "web-media-technology",
+  "title": "Web 媒体技术",
+  "subject": "web-media-technology",
+  "chapters": [
+    {
+      "id": "media-ch-1",
+      "title": "第1章：数字视频的基石 · 从物理世界到数字表示",
+      "groups": [],
+      "sections": [
+        {
+          "id": "media-sec-1-1",
+          "title": "根本问题：如何将连续的视觉信息转为离散的数字信号？",
+          "chapterId": "media-ch-1"
+        },
+        {
+          "id": "media-sec-1-2",
+          "title": "拆解关键机制：采样与量化",
+          "chapterId": "media-ch-1"
+        },
+        {
+          "id": "media-sec-1-3",
+          "title": "拆解关键机制：色彩空间与色度子采样",
+          "chapterId": "media-ch-1"
+        }
+      ]
+    },
+    {
+      "id": "media-ch-2",
+      "title": "第2章：视频压缩的核心叙事 · 消除冗余的艺术",
+      "groups": [],
+      "sections": [
+        {
+          "id": "media-sec-2-1",
+          "title": "根本问题：为什么原始数字视频如此巨大？",
+          "chapterId": "media-ch-2"
+        },
+        {
+          "id": "media-sec-2-2",
+          "title": "消除空间冗余：帧内预测",
+          "chapterId": "media-ch-2"
+        },
+        {
+          "id": "media-sec-2-3",
+          "title": "消除时间冗余：帧间预测",
+          "chapterId": "media-ch-2"
+        },
+        {
+          "id": "media-sec-2-4",
+          "title": "现代Codec工具箱：AVC, HEVC, AV1的权衡",
+          "chapterId": "media-ch-2"
+        }
+      ]
+    },
+    {
+      "id": "media-ch-3",
+      "title": "第3章：现代Web媒体分发 · 从文件到自适应流",
+      "groups": [],
+      "sections": [
+        {
+          "id": "media-sec-3-1",
+          "title": "根本问题：如何在不可靠、带宽波动的互联网上实现流畅播放？",
+          "chapterId": "media-ch-3"
+        },
+        {
+          "id": "media-sec-3-2",
+          "title": "拆解关键机制：编码阶梯与分片",
+          "chapterId": "media-ch-3"
+        },
+        {
+          "id": "media-sec-3-3",
+          "title": "拆解关键机制：清单文件",
+          "chapterId": "media-ch-3"
+        }
+      ]
+    },
+    {
+      "id": "media-ch-4",
+      "title": "第4章：播放器的智能 · 客户端决策与体验优化",
+      "groups": [],
+      "sections": [
+        {
+          "id": "media-sec-4-1",
+          "title": "根本问题：播放器如何智能地选择“正确”的码率？",
+          "chapterId": "media-ch-4"
+        },
+        {
+          "id": "media-sec-4-2",
+          "title": "工具一：带宽预测算法",
+          "chapterId": "media-ch-4"
+        },
+        {
+          "id": "media-sec-4-3",
+          "title": "工具二：缓冲区管理与码率选择逻辑",
+          "chapterId": "media-ch-4"
+        }
+      ]
+    },
+    {
+      "id": "media-ch-5",
+      "title": "第5章：动手实践 · 解构真实世界的流媒体",
+      "groups": [],
+      "sections": [
+        {
+          "id": "media-sec-5-1",
+          "title": "案例研究：如何像专家一样分析YouTube视频流",
+          "chapterId": "media-ch-5"
+        }
+      ]
+    }
+  ]
+}

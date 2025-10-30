@@ -1,0 +1,134 @@
+{
+  "id": "computer-network-principles",
+  "title": "计算机网络原理",
+  "subject": "computer-network-principles",
+  "chapters": [
+    {
+      "id": "cn-ch-1",
+      "title": "第1章：导论 · 如何让全球计算机高效对话？",
+      "groups": [],
+      "sections": [
+        {
+          "id": "cn-sec-1-1",
+          "title": "根本问题：在复杂的世界里，两台计算机如何精确通信？",
+          "chapterId": "cn-ch-1"
+        },
+        {
+          "id": "cn-sec-1-2",
+          "title": "宏观视角：互联网的全景图",
+          "chapterId": "cn-ch-1"
+        }
+      ]
+    },
+    {
+      "id": "cn-ch-2",
+      "title": "第2章：应用层 · 网络为何存在？",
+      "groups": [],
+      "sections": [
+        {
+          "id": "cn-sec-2-1",
+          "title": "核心问题：应用程序之间如何约定通信规则？",
+          "chapterId": "cn-ch-2"
+        },
+        {
+          "id": "cn-sec-2-2",
+          "title": "工具一：HTTP - 构建万维网的语言",
+          "chapterId": "cn-ch-2"
+        },
+        {
+          "id": "cn-sec-2-3",
+          "title": "工具二：DNS - 互联网的“电话本”",
+          "chapterId": "cn-ch-2"
+        }
+      ]
+    },
+    {
+      "id": "cn-ch-3",
+      "title": "第3章：传输层 · 如何实现进程到进程的可靠通信？",
+      "groups": [],
+      "sections": [
+        {
+          "id": "cn-sec-3-1",
+          "title": "核心问题：数据包给了操作系统，如何确保它能交给正确的应用程序？",
+          "chapterId": "cn-ch-3"
+        },
+        {
+          "id": "cn-sec-3-2",
+          "title": "核心权衡：要“使命必达”还是“尽力而为”？",
+          "chapterId": "cn-ch-3"
+        },
+        {
+          "id": "cn-sec-3-3",
+          "title": "TCP的魔法：如何保证“可靠”？",
+          "chapterId": "cn-ch-3"
+        },
+        {
+          "id": "cn-sec-3-4",
+          "title": "TCP的魔法：如何避免“好心办坏事”？",
+          "chapterId": "cn-ch-3"
+        }
+      ]
+    },
+    {
+      "id": "cn-ch-4",
+      "title": "第4章：网络层 · 如何规划全球最佳路径？",
+      "groups": [],
+      "sections": [
+        {
+          "id": "cn-sec-4-1",
+          "title": "核心问题：如何在由数十亿设备组成的网络中，唯一地标识一台设备并向其发送数据？",
+          "chapterId": "cn-ch-4"
+        },
+        {
+          "id": "cn-sec-4-2",
+          "title": "数据平面：路由器内部的决策 - “下一跳去哪儿？”",
+          "chapterId": "cn-ch-4"
+        },
+        {
+          "id": "cn-sec-4-3",
+          "title": "控制平面：构建全局地图 - “转发表从何而来？”",
+          "chapterId": "cn-ch-4"
+        }
+      ]
+    },
+    {
+      "id": "cn-ch-5",
+      "title": "第5章：链路层 · 如何完成“最后一公里”的交付？",
+      "groups": [],
+      "sections": [
+        {
+          "id": "cn-sec-5-1",
+          "title": "核心问题：知道了下一跳路由器的IP地址，如何把数据包真正地“递给”它？",
+          "chapterId": "cn-ch-5"
+        },
+        {
+          "id": "cn-sec-5-2",
+          "title": "共享媒介的挑战：如何避免“七嘴八舌”的冲突？",
+          "chapterId": "cn-ch-5"
+        }
+      ]
+    },
+    {
+      "id": "cn-ch-6",
+      "title": "第6章：融会贯通 · 构建安全与虚拟的网络世界",
+      "groups": [],
+      "sections": [
+        {
+          "id": "cn-sec-6-1",
+          "title": "旅程回顾：一次Web请求的完整生命周期",
+          "chapterId": "cn-ch-6"
+        },
+        {
+          "id": "cn-sec-6-2",
+          "title": "网络安全基石：如何在不安全的网络上建立信任？",
+          "chapterId": "cn-ch-6"
+        },
+        {
+          "id": "cn-sec-6-3",
+          "title": "学习者目标：VPN是如何工作的？",
+          "chapterId": "cn-ch-6"
+        }
+      ]
+    }
+  ]
+}

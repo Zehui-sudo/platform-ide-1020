@@ -102,6 +102,7 @@ export interface LearningState {
   currentPath: LearningPath | null;
   currentSection: SectionContent | null;
   loadedPaths: Record<string, LearningPath>; // 存储所有已加载的路径（动态语言）
+  loadedSections: Record<string, SectionContent>; // 已加载的章节内容缓存，key = `${subject}::${sectionId}`
   // Auto-discovery of available languages and their learning-path locations
   availableSubjects?: string[];
   subjectPathMap?: Partial<Record<string, string | null>>;
@@ -112,6 +113,9 @@ export interface LearningState {
     allPaths: boolean;
   };
   loadingPathSubject?: string | null;
+  pendingPathRequestId?: string | null;
+  pendingSectionRequestId?: string | null;
+  allPathsPrefetchScheduled?: boolean;
   error: {
     path: string | null;
     section: string | null;

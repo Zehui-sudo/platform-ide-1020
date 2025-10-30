@@ -1,0 +1,134 @@
+{
+  "id": "supervised-learning",
+  "title": "监督学习",
+  "subject": "supervised-learning",
+  "chapters": [
+    {
+      "id": "ml-ch-1",
+      "title": "第1章：学习的蓝图 · 监督学习的核心框架",
+      "groups": [],
+      "sections": [
+        {
+          "id": "ml-sec-1-1",
+          "title": "根本问题：我们如何让机器从“经验”中学习？",
+          "chapterId": "ml-ch-1"
+        },
+        {
+          "id": "ml-sec-1-2",
+          "title": "核心权衡：预测精度 vs. 模型可解释性",
+          "chapterId": "ml-ch-1"
+        },
+        {
+          "id": "ml-sec-1-3",
+          "title": "核心权衡：偏差 vs. 方差",
+          "chapterId": "ml-ch-1"
+        }
+      ]
+    },
+    {
+      "id": "ml-ch-2",
+      "title": "第2章：线性模型 · 构建预测的基石",
+      "groups": [],
+      "sections": [
+        {
+          "id": "ml-sec-2-1",
+          "title": "根本问题：如何用最简单的线性关系进行预测？",
+          "chapterId": "ml-ch-2"
+        },
+        {
+          "id": "ml-sec-2-2",
+          "title": "延伸问题：当预测目标是类别而非数值时怎么办？",
+          "chapterId": "ml-ch-2"
+        },
+        {
+          "id": "ml-sec-2-3",
+          "title": "备选方案：从概率生成视角看分类",
+          "chapterId": "ml-ch-2"
+        }
+      ]
+    },
+    {
+      "id": "ml-ch-3",
+      "title": "第3章：从业者工具箱 · 模型评估与正则化",
+      "groups": [],
+      "sections": [
+        {
+          "id": "ml-sec-3-1",
+          "title": "核心问题：如何客观评估模型在未知数据上的表现？",
+          "chapterId": "ml-ch-3"
+        },
+        {
+          "id": "ml-sec-3-2",
+          "title": "核心问题：如何主动对抗过拟合？",
+          "chapterId": "ml-ch-3"
+        }
+      ]
+    },
+    {
+      "id": "ml-ch-4",
+      "title": "第4章：突破线性 · 探索非线性世界",
+      "groups": [],
+      "sections": [
+        {
+          "id": "ml-sec-4-1",
+          "title": "根本问题：当数据关系复杂，线性假设不成立时怎么办？",
+          "chapterId": "ml-ch-4"
+        },
+        {
+          "id": "ml-sec-4-2",
+          "title": "工具一：决策树",
+          "chapterId": "ml-ch-4"
+        },
+        {
+          "id": "ml-sec-4-3",
+          "title": "工具二：支持向量机",
+          "chapterId": "ml-ch-4"
+        }
+      ]
+    },
+    {
+      "id": "ml-ch-5",
+      "title": "第5章：群体的智慧 · 集成学习方法",
+      "groups": [],
+      "sections": [
+        {
+          "id": "ml-sec-5-1",
+          "title": "根本问题：单个模型不稳定或性能不足，如何系统性地提升？",
+          "chapterId": "ml-ch-5"
+        },
+        {
+          "id": "ml-sec-5-2",
+          "title": "核心思想一：通过自助采样降低方差",
+          "chapterId": "ml-ch-5"
+        },
+        {
+          "id": "ml-sec-5-3",
+          "title": "核心思想二：通过迭代修正降低偏差",
+          "chapterId": "ml-ch-5"
+        }
+      ]
+    },
+    {
+      "id": "ml-ch-6",
+      "title": "第6章：初探现代架构 · 神经网络入门",
+      "groups": [],
+      "sections": [
+        {
+          "id": "ml-sec-6-1",
+          "title": "根本问题：是否存在一种能自动学习特征并拟合任意复杂函数的“通用”模型？",
+          "chapterId": "ml-ch-6"
+        },
+        {
+          "id": "ml-sec-6-2",
+          "title": "拆解关键机制：前向传播与反向传播",
+          "chapterId": "ml-ch-6"
+        },
+        {
+          "id": "ml-sec-6-3",
+          "title": "实践考量与未来展望",
+          "chapterId": "ml-ch-6"
+        }
+      ]
+    }
+  ]
+}

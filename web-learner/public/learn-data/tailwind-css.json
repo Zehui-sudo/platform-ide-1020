@@ -1,0 +1,139 @@
+{
+  "id": "tailwind-css",
+  "title": "Tailwind css",
+  "subject": "tailwind-css",
+  "chapters": [
+    {
+      "id": "tw-ch-1",
+      "title": "第1章：入门与核心理念",
+      "groups": [],
+      "sections": [
+        {
+          "id": "tw-sec-1-1",
+          "title": "什么是 Tailwind CSS？Utility-First 的革命",
+          "chapterId": "tw-ch-1"
+        },
+        {
+          "id": "tw-sec-1-2",
+          "title": "环境搭建与初体验",
+          "chapterId": "tw-ch-1"
+        },
+        {
+          "id": "tw-sec-1-3",
+          "title": "原子类语法解析",
+          "chapterId": "tw-ch-1"
+        }
+      ]
+    },
+    {
+      "id": "tw-ch-2",
+      "title": "第2章：核心工具集：样式原子",
+      "groups": [],
+      "sections": [
+        {
+          "id": "tw-sec-2-1",
+          "title": "尺寸与间距",
+          "chapterId": "tw-ch-2"
+        },
+        {
+          "id": "tw-sec-2-2",
+          "title": "文本与排版",
+          "chapterId": "tw-ch-2"
+        },
+        {
+          "id": "tw-sec-2-3",
+          "title": "背景、边框与效果",
+          "chapterId": "tw-ch-2"
+        }
+      ]
+    },
+    {
+      "id": "tw-ch-3",
+      "title": "第3章：页面布局：从一维到二维",
+      "groups": [],
+      "sections": [
+        {
+          "id": "tw-sec-3-1",
+          "title": "一维布局：Flexbox",
+          "chapterId": "tw-ch-3"
+        },
+        {
+          "id": "tw-sec-3-2",
+          "title": "二维布局：Grid",
+          "chapterId": "tw-ch-3"
+        },
+        {
+          "id": "tw-sec-3-3",
+          "title": "定位与层叠",
+          "chapterId": "tw-ch-3"
+        }
+      ]
+    },
+    {
+      "id": "tw-ch-4",
+      "title": "第4章：响应式与交互性",
+      "groups": [],
+      "sections": [
+        {
+          "id": "tw-sec-4-1",
+          "title": "响应式设计：移动优先",
+          "chapterId": "tw-ch-4"
+        },
+        {
+          "id": "tw-sec-4-2",
+          "title": "状态修饰符：Hover, Focus 等",
+          "chapterId": "tw-ch-4"
+        },
+        {
+          "id": "tw-sec-4-3",
+          "title": "深色模式",
+          "chapterId": "tw-ch-4"
+        }
+      ]
+    },
+    {
+      "id": "tw-ch-5",
+      "title": "第5章：定制与扩展",
+      "groups": [],
+      "sections": [
+        {
+          "id": "tw-sec-5-1",
+          "title": "配置文件 `tailwind.config.js`",
+          "chapterId": "tw-ch-5"
+        },
+        {
+          "id": "tw-sec-5-2",
+          "title": "函数与指令：@apply 的力量",
+          "chapterId": "tw-ch-5"
+        },
+        {
+          "id": "tw-sec-5-3",
+          "title": "编写插件",
+          "chapterId": "tw-ch-5"
+        }
+      ]
+    },
+    {
+      "id": "tw-ch-6",
+      "title": "第6章：高级应用与工作流",
+      "groups": [],
+      "sections": [
+        {
+          "id": "tw-sec-6-1",
+          "title": "组件抽象模式",
+          "chapterId": "tw-ch-6"
+        },
+        {
+          "id": "tw-sec-6-2",
+          "title": "性能优化：JIT 与 Purge",
+          "chapterId": "tw-ch-6"
+        },
+        {
+          "id": "tw-sec-6-3",
+          "title": "官方插件应用",
+          "chapterId": "tw-ch-6"
+        }
+      ]
+    }
+  ]
+}
