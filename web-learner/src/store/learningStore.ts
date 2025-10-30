@@ -313,6 +313,34 @@ export const useLearningStore = create<LearningState & LearningActions>()(
       // hybridServiceInitialized removed
 
       // Actions
+      getFirstSectionId: (subject?: string) => {
+        const state = get();
+        const path = subject
+          ? state.loadedPaths[subject] || state.currentPath
+          : state.currentPath;
+          
+        if (!path) return null;
+        
+        // 尝试从第一章获取第一个 section
+        const firstChapter = path.chapters[0];
+        if (!firstChapter) return null;
+        
+        // 优先从 sections 获取
+        if (firstChapter.sections && firstChapter.sections.length > 0) {
+          return firstChapter.sections[0].id;
+        }
+        
+        // 从 groups 获取
+        if (firstChapter.groups && firstChapter.groups.length > 0) {
+          const firstGroup = firstChapter.groups[0];
+          if (firstGroup.sections && firstGroup.sections.length > 0) {
+            return firstGroup.sections[0].id;
+          }
+        }
+        
+        return null;
+      },
+      
       discoverSubjects: async () => {
         try {
           const res = await fetch('/api/learning-config');

@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import dynamic from 'next/dynamic';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import type { ImperativePanelHandle } from 'react-resizable-panels';
 import { LearnNavBar } from '@/components/LearnNavBar';
@@ -24,9 +24,11 @@ import { PanelRightClose, PanelLeftClose, Bot, List } from 'lucide-react';
 import { useLearningStore } from '@/store/learningStore';
 
 export default function LearnLayoutContent({ children }: { children?: React.ReactNode }) {
+  const router = useRouter();
   const loadPath = useLearningStore((state) => state.loadPath);
   const loadSection = useLearningStore((state) => state.loadSection);
   const currentPath = useLearningStore((state) => state.currentPath);
+  const getFirstSectionId = useLearningStore((state) => state.getFirstSectionId);
   const uiState = useLearningStore((state) => state.uiState);
   const updateUIState = useLearningStore((state) => state.updateUIState);
   const searchParams = useSearchParams();
@@ -44,7 +46,7 @@ export default function LearnLayoutContent({ children }: { children?: React.Reac
       timestamp: new Date().toISOString()
     });
 
-    // URL is the source of truth. Only sync when URL changes.
+    // 1. 处理 subject 同步
     if (subjectFromUrl && subjectFromUrl !== currentSubject) {
       console.log('%c[Layout.useEffect] 🚀 调用 loadPath (URL不匹配)', 'color: cyan', {
         from: currentSubject,
@@ -57,20 +59,25 @@ export default function LearnLayoutContent({ children }: { children?: React.Reac
       loadPath(savedSubject);
     }
 
-    if (sectionFromUrl) {
-      console.log('%c[Layout.useEffect] 🚀 调用 loadSection (来自URL)', 'color: cyan', { sectionFromUrl });
-      loadSection(sectionFromUrl);
-    } else {
-      const lastOpened = localStorage.getItem('last-opened-section');
-      if (lastOpened) {
-        console.log('%c[Layout.useEffect] 🚀 调用 loadSection (来自localStorage)', 'color: cyan', {
-          lastOpened,
-          currentPathSubject: currentSubject
-        });
-        loadSection(lastOpened);
+    // 2. 处理 section 同步 - 完全基于 URL
+    if (subjectFromUrl && currentPath && subjectFromUrl === currentSubject) {
+      if (sectionFromUrl) {
+        // URL 中有 section，直接加载
+        console.log('%c[Layout.useEffect] 🚀 加载 section (来自URL)', 'color: cyan', { sectionFromUrl });
+        loadSection(sectionFromUrl);
+      } else {
+        // ✅ URL 中没有 section，自动补充第一个 section
+        const firstSectionId = getFirstSectionId(subjectFromUrl);
+        if (firstSectionId) {
+          console.log('%c[Layout.useEffect] 🔧 补充默认 section 到 URL', 'color: orange', {
+            subject: subjectFromUrl,
+            section: firstSectionId
+          });
+          router.replace(`/learn?subject=${subjectFromUrl}&section=${firstSectionId}`, { scroll: false });
+        }
       }
     }
-  }, [subjectFromUrl, sectionFromUrl, loadPath, loadSection]);
+  }, [subjectFromUrl, sectionFromUrl, loadPath, loadSection, router, currentPath, getFirstSectionId]);
   // ✅ Removed currentPath from dependencies to prevent re-sync loop
 
   const navPanelRef = React.useRef<ImperativePanelHandle>(null);

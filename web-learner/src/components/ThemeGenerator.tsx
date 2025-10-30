@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useId, useMemo, Suspense, useState, createElement } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Loader2, Sparkles, NotebookPen, ChevronRight } from "lucide-react";
+import { useLearningStore } from "@/store/learningStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -639,11 +640,54 @@ const GeneratingContentView = () => {
 };
 
 const ContentReadyView = () => {
-  const { contentResult, outlineResult, themeName, loadCourse, setFormField, setUiOpen } = useThemeGeneratorStore();
+  const router = useRouter();
+  const { contentResult, outlineResult, themeName, setFormField, setUiOpen } = useThemeGeneratorStore();
+  const getFirstSectionId = useLearningStore((state) => state.getFirstSectionId);
 
   const title = outlineResult?.reconstructed_outline?.title || themeName || '新主题';
   const chapterCount = outlineResult?.reconstructed_outline?.groups?.length || 0;
   const pointCount = contentResult?.publishedFiles?.length || 0;
+
+  const handleStartLearning = async () => {
+    try {
+      // 从 contentResult 获取 slug
+      const pub = contentResult?.publishDir;
+      let slug = '';
+      
+      if (pub) {
+        const parts = String(pub).split(/[\/]+/);
+        const ix = parts.lastIndexOf('content');
+        if (ix >= 0 && ix + 1 < parts.length) slug = parts[ix + 1];
+      }
+      
+      if (!slug) {
+        slug = outlineResult?.reconstructed_outline?.meta?.topic_slug ||
+               outlineResult?.subject_slug ||
+               '';
+      }
+      
+      if (slug) {
+        // 先加载 path
+        await useLearningStore.getState().loadPath(slug);
+        
+        // 获取第一个 section
+        const firstSectionId = getFirstSectionId(slug);
+        
+        // ✅ 跳转到学习页面，包含 subject 和 section
+        if (firstSectionId) {
+          router.push(`/learn?subject=${slug}&section=${firstSectionId}`);
+        } else {
+          router.push(`/learn?subject=${slug}`);
+        }
+        
+        // 关闭弹窗并重置
+        setFormField('stage', 'idle');
+        setUiOpen(false);
+      }
+    } catch (error) {
+      console.error('Failed to load course:', error);
+    }
+  };
 
   return (
     <div className="space-y-3">
@@ -667,11 +711,7 @@ const ContentReadyView = () => {
         <Button variant="outline" className="h-7 px-2 text-xs" onClick={() => { setFormField('stage', 'idle'); setUiOpen(false); }}>再生成一个知识点</Button>
         <Button
           className="h-7 px-2 text-xs"
-          onClick={() => {
-            loadCourse();
-            setFormField('stage', 'idle');
-            setUiOpen(false);
-          }}
+          onClick={handleStartLearning}
         >现在开始学习！</Button>
       </div>
     </div>

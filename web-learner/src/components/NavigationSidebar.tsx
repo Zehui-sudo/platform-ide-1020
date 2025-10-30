@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useLearningStore } from '@/store/learningStore';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
@@ -13,14 +14,15 @@ type NavigationSidebarProps = {
 };
 
 export function NavigationSidebar({ toggleSidebar }: NavigationSidebarProps) {
+  const router = useRouter();
   const currentPath = useLearningStore((state) => state.currentPath);
   const currentSection = useLearningStore((state) => state.currentSection);
-  const loadSection = useLearningStore((state) => state.loadSection);
   const uiState = useLearningStore((state) => state.uiState);
   const updateUIState = useLearningStore((state) => state.updateUIState);
   const userProgress = useLearningStore((state) => state.userProgress);
   const { expandedChapters, searchQuery } = uiState;
   const currentSectionId = currentSection?.id || '';
+  const currentSubject = currentPath?.subject;
 
   // 视图模型，避免在 JSX 中做复杂断言
   type GroupView = { id: string; title: string; sections: { id: string; title: string; chapterId: string }[]; matched?: boolean };
@@ -56,7 +58,9 @@ export function NavigationSidebar({ toggleSidebar }: NavigationSidebarProps) {
     .filter((chapter) => chapter.matched || chapter.count > 0);
 
   const handleSectionClick = (section: { id: string; title: string; chapterId: string }) => {
-    loadSection(section.id);
+    if (!currentSubject) return;
+    // ✅ 通过 URL 驱动，不直接调用 loadSection
+    router.push(`/learn?subject=${currentSubject}&section=${section.id}`);
   };
 
   const simplifyTitle = (title: string) => {

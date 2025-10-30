@@ -148,9 +148,8 @@ export function LearnNavBar() {
         timestamp: new Date().toISOString()
       });
       
-      console.log('%c[NavBar] 🚀 调用 loadPath', 'color: orange; font-weight: bold', { subject: newSubject });
-      loadPath(newSubject);
-      
+      // ✅ 只更新 URL，不调用 loadPath
+      // Layout 会监听 URL 变化并自动加载 path 和 section
       console.log('%c[NavBar] 🌐 调用 router.replace', 'color: purple; font-weight: bold', {
         url: `/learn?subject=${newSubject}`
       });
