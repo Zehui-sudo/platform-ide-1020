@@ -142,7 +142,18 @@ export function LearnNavBar() {
 
   const handleSubjectChange = (newSubject: string) => {
     if (newSubject !== subject) {
+      console.log('%c[NavBar] 🎯 用户点击主题切换', 'color: blue; font-weight: bold', {
+        from: subject,
+        to: newSubject,
+        timestamp: new Date().toISOString()
+      });
+      
+      console.log('%c[NavBar] 🚀 调用 loadPath', 'color: orange; font-weight: bold', { subject: newSubject });
       loadPath(newSubject);
+      
+      console.log('%c[NavBar] 🌐 调用 router.replace', 'color: purple; font-weight: bold', {
+        url: `/learn?subject=${newSubject}`
+      });
       router.replace(`/learn?subject=${newSubject}`);
     }
   };

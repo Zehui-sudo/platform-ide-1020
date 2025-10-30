@@ -36,22 +36,42 @@ export default function LearnLayoutContent({ children }: { children?: React.Reac
   React.useEffect(() => {
     const currentSubject = currentPath?.subject;
 
+    console.log('%c[Layout.useEffect] 🔄 触发', 'color: cyan; font-weight: bold', {
+      subjectFromUrl,
+      sectionFromUrl,
+      currentSubject,
+      hasCurrentPath: !!currentPath,
+      timestamp: new Date().toISOString()
+    });
+
+    // URL is the source of truth. Only sync when URL changes.
     if (subjectFromUrl && subjectFromUrl !== currentSubject) {
+      console.log('%c[Layout.useEffect] 🚀 调用 loadPath (URL不匹配)', 'color: cyan', {
+        from: currentSubject,
+        to: subjectFromUrl
+      });
       loadPath(subjectFromUrl);
     } else if (!subjectFromUrl && !currentSubject) {
       const savedSubject = localStorage.getItem('preferred-subject') || localStorage.getItem('preferred-language') || 'python';
+      console.log('%c[Layout.useEffect] 🚀 调用 loadPath (初始化)', 'color: cyan', { savedSubject });
       loadPath(savedSubject);
     }
 
     if (sectionFromUrl) {
+      console.log('%c[Layout.useEffect] 🚀 调用 loadSection (来自URL)', 'color: cyan', { sectionFromUrl });
       loadSection(sectionFromUrl);
     } else {
       const lastOpened = localStorage.getItem('last-opened-section');
       if (lastOpened) {
+        console.log('%c[Layout.useEffect] 🚀 调用 loadSection (来自localStorage)', 'color: cyan', {
+          lastOpened,
+          currentPathSubject: currentSubject
+        });
         loadSection(lastOpened);
       }
     }
-  }, [subjectFromUrl, sectionFromUrl, currentPath, loadPath, loadSection]);
+  }, [subjectFromUrl, sectionFromUrl, loadPath, loadSection]);
+  // ✅ Removed currentPath from dependencies to prevent re-sync loop
 
   const navPanelRef = React.useRef<ImperativePanelHandle>(null);
   const aiPanelRef = React.useRef<ImperativePanelHandle>(null);

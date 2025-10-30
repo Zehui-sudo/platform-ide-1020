@@ -376,7 +376,17 @@ export const useLearningStore = create<LearningState & LearningActions>()(
       
       loadPath: async (subject: string) => {
         const state = get();
+        
+        console.log('%c[Store.loadPath] 📞 被调用', 'color: green; font-weight: bold', {
+          requestedSubject: subject,
+          currentSubject: state.currentPath?.subject,
+          isLoading: state.loading.path,
+          loadingSubject: state.loadingPathSubject,
+          timestamp: new Date().toISOString()
+        });
+        
         if ((state.loading.path && state.loadingPathSubject === subject) || state.currentPath?.subject === subject) {
+          console.log('%c[Store.loadPath] ⏭️ 跳过 - 已加载或正在加载', 'color: gray', { subject });
           return;
         }
         
@@ -405,6 +415,13 @@ export const useLearningStore = create<LearningState & LearningActions>()(
             ...get().loadedPaths,
             [targetLang]: path
           };
+          
+          console.log('%c[Store.loadPath] ✅ 成功加载 Path', 'color: green; font-weight: bold', {
+            subject: targetLang,
+            pathId: path.id,
+            chaptersCount: path.chapters.length,
+            timestamp: new Date().toISOString()
+          });
           
           set({
             currentPath: path,
@@ -441,8 +458,33 @@ export const useLearningStore = create<LearningState & LearningActions>()(
 
       loadSection: async (sectionId: string) => {
         const state = get();
+        
+        console.log('%c[Store.loadSection] 📞 被调用', 'color: teal; font-weight: bold', {
+          requestedSection: sectionId,
+          currentSection: state.currentSection?.id,
+          currentPathSubject: state.currentPath?.subject,
+          isLoading: state.loading.section,
+          timestamp: new Date().toISOString()
+        });
+        
         if (state.loading.section || state.currentSection?.id === sectionId) {
+          console.log('%c[Store.loadSection] ⏭️ 跳过 - 已加载或正在加载', 'color: gray', { sectionId });
           return;
+        }
+        
+        // ⚠️ 验证 section 是否属于当前 path
+        if (state.currentPath) {
+          const allSections = state.currentPath.chapters.flatMap(ch =>
+            (ch.sections || []).concat((ch.groups || []).flatMap(g => g.sections || []))
+          );
+          const sectionExists = allSections.some(s => s.id === sectionId);
+          if (!sectionExists) {
+            console.warn('%c[Store.loadSection] ⚠️ 状态不匹配', 'color: red; font-weight: bold', {
+              sectionId,
+              currentPathSubject: state.currentPath.subject,
+              message: `Section "${sectionId}" 不属于当前 Path "${state.currentPath.subject}"`
+            });
+          }
         }
         
         set(state => ({
@@ -452,7 +494,17 @@ export const useLearningStore = create<LearningState & LearningActions>()(
 
         try {
           const fallbackSubject = get().currentPath?.subject;
+          console.log('%c[Store.loadSection] 🔍 获取 Section 内容', 'color: teal', {
+            sectionId,
+            fallbackSubject
+          });
           const content = await mockLearningApi.getSectionContent(sectionId, fallbackSubject);
+          console.log('%c[Store.loadSection] ✅ 成功加载 Section', 'color: teal; font-weight: bold', {
+            sectionId,
+            blocksCount: content.contentBlocks.length,
+            timestamp: new Date().toISOString()
+          });
+          
           set({
             currentSection: content,
             loading: { ...get().loading, section: false },
