@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLearningStore } from '@/store/learningStore';
 
 import type { MermaidToExcalidrawResult } from '@excalidraw/mermaid-to-excalidraw/dist/interfaces.js';
@@ -41,10 +41,17 @@ interface MermaidDiagramProps {
   markdownIndex?: number;
 }
 
+const DEFAULT_PREVIEW_SCALE = 0.8;
+const WHEEL_ZOOM_SENSITIVITY = 0.003;
+
 export function MermaidDiagram({ code, fontSize = 16, sectionId, markdownIndex }: MermaidDiagramProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
+  const previewContentRef = useRef<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewMarkup, setPreviewMarkup] = useState<string | null>(null);
+  const [previewScale, setPreviewScale] = useState(DEFAULT_PREVIEW_SCALE);
+  const [previewTransformOrigin, setPreviewTransformOrigin] = useState('50% 50%');
   const [svgMarkup, setSvgMarkup] = useState<string | null>(null);
   const [fullSizeMarkup, setFullSizeMarkup] = useState<string | null>(null);
   const diagramId = useMemo(
@@ -216,19 +223,61 @@ export function MermaidDiagram({ code, fontSize = 16, sectionId, markdownIndex }
             shouldAddWatermark: false,
           },
           renderEmbeddables: false,
+          exportPadding: 0,
         });
 
         if (cancelled) return;
 
+        const SCALE = 0.5;
+        const rawWidthAttr = svgElement.getAttribute('width');
+        const rawHeightAttr = svgElement.getAttribute('height');
+        let width = rawWidthAttr ? Number.parseFloat(rawWidthAttr) : Number.NaN;
+        let height = rawHeightAttr ? Number.parseFloat(rawHeightAttr) : Number.NaN;
+
+        const measureSvgBoundingBox = () => {
+          if (typeof document === 'undefined') return null;
+          const temp = svgElement.cloneNode(true) as SVGSVGElement;
+          temp.style.position = 'absolute';
+          temp.style.left = '-10000px';
+          temp.style.top = '-10000px';
+          temp.style.visibility = 'hidden';
+          temp.style.pointerEvents = 'none';
+          document.body.appendChild(temp);
+          try {
+            const bbox = temp.getBBox();
+            if (
+              Number.isFinite(bbox.width) &&
+              Number.isFinite(bbox.height) &&
+              bbox.width > 0 &&
+              bbox.height > 0
+            ) {
+              return bbox;
+            }
+            return null;
+          } catch {
+            return null;
+          } finally {
+            document.body.removeChild(temp);
+          }
+        };
+
+        const bbox = measureSvgBoundingBox();
+        if (bbox) {
+          width = bbox.width;
+          height = bbox.height;
+          svgElement.setAttribute('viewBox', `${bbox.x} ${bbox.y} ${bbox.width} ${bbox.height}`);
+          svgElement.setAttribute('width', `${bbox.width}`);
+          svgElement.setAttribute('height', `${bbox.height}`);
+        }
+
         const fullSizeSvg = svgElement.cloneNode(true) as SVGSVGElement;
+        fullSizeSvg.style.maxWidth = '100%';
+        fullSizeSvg.style.height = 'auto';
+        fullSizeSvg.style.display = 'block';
+        fullSizeSvg.style.margin = '0 auto';
+
         const serializer = new XMLSerializer();
         const fullSizeMarkup = serializer.serializeToString(fullSizeSvg);
-
-        const SCALE = 0.5;
-        const rawWidth = svgElement.getAttribute('width');
-        const rawHeight = svgElement.getAttribute('height');
-        const width = rawWidth ? Number.parseFloat(rawWidth) : Number.NaN;
-        const height = rawHeight ? Number.parseFloat(rawHeight) : Number.NaN;
 
         if (!Number.isNaN(width) && !Number.isNaN(height)) {
           svgElement.style.width = `${width * SCALE}px`;
@@ -275,12 +324,52 @@ export function MermaidDiagram({ code, fontSize = 16, sectionId, markdownIndex }
     };
   }, [code, normalizedCode, fontSize, sectionId, markdownIndex]);
 
+  useEffect(() => {
+    if (previewMarkup) {
+      setPreviewScale(DEFAULT_PREVIEW_SCALE);
+      setPreviewTransformOrigin('50% 50%');
+    }
+  }, [previewMarkup]);
+
   const closeOverlay = () => setPreviewMarkup(null);
   const handlePreviewClick = () => {
     if (fullSizeMarkup) {
       setPreviewMarkup(fullSizeMarkup);
     }
   };
+
+  const handleOverlayWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const SCALE_SENSITIVITY = WHEEL_ZOOM_SENSITIVITY;
+    const MIN_SCALE = 0.2;
+    const MAX_SCALE = 6;
+    const zoomFactor = Math.exp(-event.deltaY * SCALE_SENSITIVITY);
+
+    setPreviewScale((prev) => {
+      const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, prev * zoomFactor));
+      return Number.isFinite(next) ? next : prev;
+    });
+
+    const container = previewContainerRef.current;
+    const content = previewContentRef.current;
+    if (content) {
+      const rect = content.getBoundingClientRect();
+      const originX = rect.width ? ((event.clientX - rect.left) / rect.width) * 100 : 50;
+      const originY = rect.height ? ((event.clientY - rect.top) / rect.height) * 100 : 50;
+      setPreviewTransformOrigin(`${originX}% ${originY}%`);
+    } else if (container) {
+      const rect = container.getBoundingClientRect();
+      const originX = rect.width ? ((event.clientX - rect.left) / rect.width) * 100 : 50;
+      const originY = rect.height ? ((event.clientY - rect.top) / rect.height) * 100 : 50;
+      setPreviewTransformOrigin(`${originX}% ${originY}%`);
+    }
+  }, []);
 
   if (error) {
     return (
@@ -324,8 +413,20 @@ export function MermaidDiagram({ code, fontSize = 16, sectionId, markdownIndex }
             >
               ×
             </button>
-            <div className="max-h-[80vh] overflow-auto">
-              <div className="mx-auto" dangerouslySetInnerHTML={{ __html: previewMarkup }} />
+            <div
+              className="max-h-[80vh] overflow-auto"
+              onWheel={handleOverlayWheel}
+              ref={previewContainerRef}
+            >
+              <div
+                ref={previewContentRef}
+                className="mx-auto"
+                style={{
+                  transform: `scale(${previewScale})`,
+                  transformOrigin: previewTransformOrigin,
+                }}
+                dangerouslySetInnerHTML={{ __html: previewMarkup }}
+              />
             </div>
           </div>
         </div>
