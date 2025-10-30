@@ -205,7 +205,7 @@ export default function LearnLayoutContent({ children }: { children?: React.Reac
             <ResizablePanel
               ref={navPanelRef}
               collapsible
-              defaultSize={15}
+              defaultSize={10}
               minSize={navMinPercent}
               onCollapse={() => updateUIState({ navCollapsed: true })}
               onExpand={() => updateUIState({ navCollapsed: false })}
