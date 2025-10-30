@@ -641,7 +641,7 @@ const GeneratingContentView = () => {
 
 const ContentReadyView = () => {
   const router = useRouter();
-  const { contentResult, outlineResult, themeName, setFormField, setUiOpen } = useThemeGeneratorStore();
+  const { contentResult, outlineResult, themeName, setFormField, setUiOpen, restartFlow } = useThemeGeneratorStore();
   const getFirstSectionId = useLearningStore((state) => state.getFirstSectionId);
 
   const title = outlineResult?.reconstructed_outline?.title || themeName || '新主题';
@@ -708,7 +708,14 @@ const ContentReadyView = () => {
       </div>
       
       <div className="flex gap-5 pt-2">
-        <Button variant="outline" className="h-7 px-2 text-xs" onClick={() => { setFormField('stage', 'idle'); setUiOpen(false); }}>再生成一个知识点</Button>
+        <Button
+          variant="outline"
+          className="h-7 px-2 text-xs"
+          onClick={() => {
+            restartFlow({ keepInputs: true });
+            setUiOpen(false);
+          }}
+        >再生成一个知识点</Button>
         <Button
           className="h-7 px-2 text-xs"
           onClick={handleStartLearning}

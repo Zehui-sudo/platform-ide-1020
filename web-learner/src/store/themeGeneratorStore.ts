@@ -150,6 +150,7 @@ interface ThemeGeneratorState {
   cancelOutlineGeneration: () => Promise<void>;
   loadCourse: () => void;
   reset: () => void;
+  restartFlow: (options?: { keepInputs?: boolean }) => void;
   rehydrate: () => Promise<void>;
 }
 
@@ -169,6 +170,7 @@ type ThemeGeneratorData = Omit<
   | 'cancelOutlineGeneration'
   | 'loadCourse'
   | 'reset'
+  | 'restartFlow'
   | 'rehydrate'
 >;
 
@@ -207,6 +209,60 @@ const parseSavedFromDetail = (detail?: string): number | null => {
   const m = detail.match(/已保存\s*(\d+)\s*个/);
   if (m) return parseInt(m[1], 10);
   return null;
+};
+
+const DISMISSED_JOBS_STORAGE_KEY = 'themeGenerator:dismissedJobs';
+
+const loadDismissedJobIds = (): Set<string> => {
+  if (typeof window === 'undefined') {
+    return new Set();
+  }
+  try {
+    const raw = window.localStorage.getItem(DISMISSED_JOBS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const ids = parsed
+        .map((id) => (typeof id === 'string' ? id.trim() : ''))
+        .filter((id): id is string => !!id);
+      return new Set(ids);
+    }
+  } catch {}
+  return new Set();
+};
+
+const storeDismissedJobIds = (ids: Set<string>) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    const ordered = Array.from(ids).filter((id) => !!id);
+    const limited = ordered.slice(-20);
+    window.localStorage.setItem(
+      DISMISSED_JOBS_STORAGE_KEY,
+      JSON.stringify(limited),
+    );
+  } catch {}
+};
+
+const rememberDismissedJobs = (jobIds: (string | null | undefined)[]) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const existing = loadDismissedJobIds();
+  let changed = false;
+  for (const jobId of jobIds) {
+    if (typeof jobId === 'string') {
+      const trimmed = jobId.trim();
+      if (trimmed && !existing.has(trimmed)) {
+        existing.add(trimmed);
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    storeDismissedJobIds(existing);
+  }
 };
 
 export const useThemeGeneratorStore = create<ThemeGeneratorState>()((set, get) => ({
@@ -560,11 +616,30 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()((set, get) =
     if (contentEvtSrc) contentEvtSrc.close();
     outlineEvtSrc = null;
     contentEvtSrc = null;
+    const { jobId, contentJobId } = get();
+    rememberDismissedJobs([jobId, contentJobId]);
     set(() => ({ ...createInitialState() }));
+  },
+
+  restartFlow: (options) => {
+    if (outlineEvtSrc) outlineEvtSrc.close();
+    if (contentEvtSrc) contentEvtSrc.close();
+    outlineEvtSrc = null;
+    contentEvtSrc = null;
+    const { keepInputs = false } = options ?? {};
+    const { jobId, contentJobId, themeName, generationStyle, content } = get();
+    rememberDismissedJobs([jobId, contentJobId]);
+    set(() => ({
+      ...createInitialState(),
+      ...(keepInputs ? { themeName, generationStyle, content } : {}),
+      stage: 'idle',
+    }));
   },
 
   rehydrate: async () => {
     try {
+      const dismissed = loadDismissedJobIds();
+
       const [outlineResp, contentResp] = await Promise.all([
         fetch(apiUrl('/api/pipeline/jobs/latest?type=outline'), { cache: 'no-store' }).catch(() => null),
         fetch(apiUrl('/api/pipeline/jobs/latest?type=content'), { cache: 'no-store' }).catch(() => null),
@@ -573,8 +648,14 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()((set, get) =
       const outlineData = outlineResp && outlineResp.ok ? await outlineResp.json() : null;
       const contentData = contentResp && contentResp.ok ? await contentResp.json() : null;
 
-      const outlineJob = (outlineData?.job ?? null) as PipelineJobSnapshot | null;
-      const contentJob = (contentData?.job ?? null) as PipelineJobSnapshot | null;
+      const rawOutlineJob = (outlineData?.job ?? null) as PipelineJobSnapshot | null;
+      const rawContentJob = (contentData?.job ?? null) as PipelineJobSnapshot | null;
+
+      const outlineDismissed = !!rawOutlineJob && dismissed.has(rawOutlineJob.id);
+      const contentDismissed = !!rawContentJob && dismissed.has(rawContentJob.id);
+
+      const outlineJob = outlineDismissed ? null : rawOutlineJob;
+      const contentJob = contentDismissed ? null : rawContentJob;
 
       const outlineResultPromise =
         outlineJob && outlineJob.status === 'success'
