@@ -178,6 +178,7 @@ export interface LearningActions {
   discoverSubjects: () => Promise<void>; // 自动发现可用学科与学习路径
   initializeAllPaths: () => Promise<void>; // 初始化所有学科的学习路径
   loadSection: (sectionId: string) => Promise<void>;
+  getFirstSectionId: (subject?: string) => string | null;
   updateUserCode: (sectionId: string, code: string) => void;
   updateUIState: (uiState: Partial<UIState>) => void;
   // AI Chat Actions

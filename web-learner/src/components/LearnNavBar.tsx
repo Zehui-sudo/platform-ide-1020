@@ -44,7 +44,7 @@ type LearnFontItem = {
 export function LearnNavBar() {
   const hydrated = useHydratedStore();
   const router = useRouter();
-  const { currentPath, currentSection, loadPath, loadSection, fontSize, setFontSize, userProgress } = useLearningStore();
+  const { currentPath, currentSection, loadSection, fontSize, setFontSize, userProgress } = useLearningStore();
   const fontFamilyId = useLearningStore((s) => s.fontFamilyId);
   const setFontFamily = useLearningStore((s) => s.setFontFamily);
   const availableSubjects = useLearningStore((state) => state.availableSubjects);

@@ -1,8 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { useSearchParams } from 'next/navigation';
-import { useLearningStore } from '@/store/learningStore';
 import { ContentDisplay } from '@/components/ContentDisplay';
 
 // It's a best practice to wrap the component that uses useSearchParams in a client component.
