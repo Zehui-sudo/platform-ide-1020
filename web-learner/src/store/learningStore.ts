@@ -171,7 +171,7 @@ const mockLearningApi = {
     if (!resourcePath) {
       const apiCfg = await fetchLearningConfigFromEndpoint('/api/learning-config');
       if (apiCfg?.pathMap?.[targetLang]) {
-        resourcePath = apiCfg.pathMap[targetLang];
+        resourcePath = apiCfg.pathMap[targetLang] ?? null;
       }
     }
 
