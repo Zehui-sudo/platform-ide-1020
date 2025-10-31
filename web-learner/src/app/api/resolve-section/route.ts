@@ -1,60 +1,58 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { promises as fsp } from 'node:fs';
+import path from 'node:path';
 
-function sanitizeLang(input: string): string | null {
-  // Allow only simple folder names (letters, numbers, dash, underscore)
-  if (!/^[A-Za-z0-9_-]+$/.test(input)) return null;
-  return input;
-}
+export const runtime = 'nodejs';
+
+const PROJECT_ROOT = process.cwd();
+const CONTENT_ROOT = path.join(PROJECT_ROOT, 'public', 'content');
 
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const subject = searchParams.get('subject')?.trim();
+  const sectionId = searchParams.get('id')?.trim();
+
+  if (!subject || !sectionId) {
+    return NextResponse.json(
+      { error: 'subject and id are required' },
+      { status: 400 },
+    );
+  }
+
+  const subjectDir = path.join(CONTENT_ROOT, subject);
+
   try {
-    const url = new URL(request.url);
-    const langParam = url.searchParams.get('subject') || url.searchParams.get('lang') || '';
-    const idParam = url.searchParams.get('id') || '';
-
-    const lang = sanitizeLang(langParam || '');
-    const id = (idParam || '').trim();
-
-    if (!lang || !id) {
-      return NextResponse.json({ error: 'Missing lang or id' }, { status: 400 });
+    const files = await fsp.readdir(subjectDir);
+    const candidates = files.filter(
+      (file) =>
+        file.endsWith('.md') &&
+        file.toLowerCase().includes(sectionId.toLowerCase()),
+    );
+    if (candidates.length === 0) {
+      return NextResponse.json({ error: 'not found' }, { status: 404 });
     }
+    const filename = candidates[0];
+    const resolved = path.join('/content', subject, filename);
+    const fullPath = path.join(subjectDir, filename);
+    const markdown = await fsp.readFile(fullPath, 'utf8');
 
-    const publicDir = path.join(process.cwd(), 'public');
-    const contentDir = path.join(publicDir, 'content', lang);
-
-    if (!fs.existsSync(contentDir) || !fs.statSync(contentDir).isDirectory()) {
-      return NextResponse.json({ error: 'Language content directory not found' }, { status: 404 });
-    }
-
-    const entries = fs.readdirSync(contentDir, { withFileTypes: true });
-    const mdFiles = entries
-      .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.md'))
-      .map((e) => e.name);
-
-    const lowerId = id.toLowerCase();
-
-    // Prefer exact match first
-    const exact = mdFiles.find((f) => f.replace(/\.md$/i, '').toLowerCase() === lowerId);
-    if (exact) {
-      return NextResponse.json({ path: `/content/${lang}/${exact}` });
-    }
-
-    // Then prefix match: id****.md (allow any suffix after id)
-    const prefixMatches = mdFiles.filter((f) => f.replace(/\.md$/i, '').toLowerCase().startsWith(lowerId));
-    if (prefixMatches.length > 0) {
-      // Deterministic selection: shortest name first, then lexicographical
-      const best = prefixMatches.sort((a, b) => {
-        if (a.length !== b.length) return a.length - b.length;
-        return a.localeCompare(b, 'en');
-      })[0];
-      return NextResponse.json({ path: `/content/${lang}/${best}` });
-    }
-
-    return NextResponse.json({ error: 'Section markdown not found' }, { status: 404 });
+    return NextResponse.json(
+      { path: resolved, markdown },
+      {
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      },
+    );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Internal error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code === 'ENOENT') {
+      return NextResponse.json({ error: 'subject not found' }, { status: 404 });
+    }
+    console.error('[api/resolve-section] failed', { subject, sectionId, error });
+    return NextResponse.json(
+      { error: 'failed to resolve section' },
+      { status: 500 },
+    );
   }
 }

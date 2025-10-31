@@ -205,16 +205,22 @@ const mockLearningApi = {
       const pref = typeof window !== 'undefined' ? (localStorage.getItem('preferred-subject') || localStorage.getItem('preferred-language')) : null;
       const lang = currentSubject || (pref || 'python');
 
-      const resolveRes = await fetch(`/api/resolve-section?subject=${encodeURIComponent(lang)}&id=${encodeURIComponent(sectionId)}`);
+      const resolveRes = await fetch(`/api/resolve-section?subject=${encodeURIComponent(lang)}&id=${encodeURIComponent(sectionId)}`, { cache: 'no-store' });
       if (!resolveRes.ok) {
         throw new Error(`Markdown file not found for section: ${sectionId}`);
       }
-      const { path: resolvedPath } = await resolveRes.json() as { path: string };
-      const response = await fetch(resolvedPath);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch ${resolvedPath}`);
+      const { path: resolvedPath, markdown: resolvedMarkdown } = await resolveRes.json() as { path: string; markdown?: string };
+      let markdown = resolvedMarkdown;
+      if (!markdown) {
+        const response = await fetch(resolvedPath, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch ${resolvedPath}`);
+        }
+        markdown = await response.text();
       }
-      let markdown = await response.text();
+      if (!markdown) {
+        markdown = '';
+      }
 
       // 预处理：去除生成器前言与不必要的元数据注释
       try {
