@@ -259,7 +259,7 @@ export async function generateSubjectLearnData({
   const markdown = await fsp.readFile(path.join(subjectDir, learningPathFile), 'utf8');
   const parsed = parseLearningPath(markdown, subjectSlug);
   const label = parsed.title || subjectSlug;
-  const relativeJsonPath = `/learn-data/${subjectSlug}.json`;
+  const relativeJsonPath = `/api/learning-path/${subjectSlug}`;
   const targetFile = path.join(outputDir, `${subjectSlug}.json`);
 
   await fsp.mkdir(outputDir, { recursive: true });

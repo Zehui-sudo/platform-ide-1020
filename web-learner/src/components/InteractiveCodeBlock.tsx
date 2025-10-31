@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Play, Copy, Check, AlertTriangle, Loader2, RotateCcw, Search, X } from 'lucide-react';
 import { CodeMirrorCodeBlock } from './CodeMirrorCodeBlock';
 import { pyodideService } from '@/services/pyodideService';
+import { copyToClipboard } from '@/utils/copyToClipboard';
 
 interface InteractiveCodeBlockProps {
   language: 'python' | 'javascript';
@@ -94,13 +95,13 @@ export function InteractiveCodeBlock({
   };
 
   const handleCopyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy code:', err);
+    const ok = await copyToClipboard(code);
+    if (!ok) {
+      console.error('Failed to copy code: clipboard unavailable');
+      return;
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleResetCode = () => {

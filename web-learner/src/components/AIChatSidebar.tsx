@@ -17,6 +17,7 @@ import {
 import { ContextReference } from './ContextReference';
 import { ChatMessageRenderer } from './ChatMessageRenderer';
 import { ChatHistoryView } from './ChatHistoryView';
+import { copyToClipboard } from '@/utils/copyToClipboard';
 
 type AIChatSidebarProps = {
   toggleSidebar: () => void;
@@ -156,18 +157,18 @@ export function AIChatSidebar({ toggleSidebar }: AIChatSidebarProps) {
 
 
   const handleCopyMessage = async (messageId: string, content: string) => {
-    try {
-      await navigator.clipboard.writeText(content);
-      setCopiedMessageId(messageId);
-      if (copyFeedbackTimeoutRef.current) {
-        clearTimeout(copyFeedbackTimeoutRef.current);
-      }
-      copyFeedbackTimeoutRef.current = setTimeout(() => {
-        setCopiedMessageId(null);
-      }, 2000);
-    } catch (error) {
-      console.error('Failed to copy message:', error);
+    const ok = await copyToClipboard(content);
+    if (!ok) {
+      console.error('Failed to copy message: clipboard unavailable');
+      return;
     }
+    setCopiedMessageId(messageId);
+    if (copyFeedbackTimeoutRef.current) {
+      clearTimeout(copyFeedbackTimeoutRef.current);
+    }
+    copyFeedbackTimeoutRef.current = setTimeout(() => {
+      setCopiedMessageId(null);
+    }, 2000);
   };
 
   const handleBubbleMouseMove = (messageId: string, event: React.MouseEvent<HTMLDivElement>) => {

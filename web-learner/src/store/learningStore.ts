@@ -175,7 +175,11 @@ const mockLearningApi = {
       throw new Error(`No learning path found for subject: ${targetLang}`);
     }
 
-    if (resourcePath.endsWith('.json')) {
+    const isJsonRoute =
+      resourcePath.endsWith('.json') ||
+      resourcePath.includes('/api/learning-path/');
+
+    if (isJsonRoute) {
       const res = await fetch(resourcePath, { cache: 'no-store' });
       if (!res.ok) {
         throw new Error(`Failed to fetch ${resourcePath}`);
