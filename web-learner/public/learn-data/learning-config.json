@@ -1,12 +1,15 @@
 {
-  "generatedAt": "2025-10-30T12:13:56.317Z",
+  "generatedAt": "2025-10-31T05:48:09.904Z",
   "subjects": [
+    "ai-image-generation",
     "cloud-server-deployment",
     "command-line-operations",
     "computer-network-principles",
+    "deep-learning",
     "javascript",
     "natural-language-processing",
     "python",
+    "quantitative-investing",
     "supervised-learning",
     "tailwind-css",
     "unsupervised-learning",
@@ -14,29 +17,35 @@
     "web-media-technology"
   ],
   "pathMap": {
+    "ai-image-generation": "/learn-data/ai-image-generation.json",
     "cloud-server-deployment": "/learn-data/cloud-server-deployment.json",
     "command-line-operations": "/learn-data/command-line-operations.json",
     "computer-network-principles": "/learn-data/computer-network-principles.json",
     "javascript": "/learn-data/javascript.json",
     "natural-language-processing": "/learn-data/natural-language-processing.json",
     "python": "/learn-data/python.json",
+    "quantitative-investing": "/learn-data/quantitative-investing.json",
     "supervised-learning": "/learn-data/supervised-learning.json",
     "tailwind-css": "/learn-data/tailwind-css.json",
     "unsupervised-learning": "/learn-data/unsupervised-learning.json",
     "web-media-encryption": "/learn-data/web-media-encryption.json",
-    "web-media-technology": "/learn-data/web-media-technology.json"
+    "web-media-technology": "/learn-data/web-media-technology.json",
+    "deep-learning": "/learn-data/deep-learning.json"
   },
   "labelMap": {
+    "ai-image-generation": "AI图像生成",
     "cloud-server-deployment": "云端服务器部署",
     "command-line-operations": "命令行操作",
     "computer-network-principles": "计算机网络原理",
     "javascript": "JavaScript 核心基础",
     "natural-language-processing": "自然语言处理",
     "python": "Python",
+    "quantitative-investing": "量化投资",
     "supervised-learning": "监督学习",
     "tailwind-css": "Tailwind css",
     "unsupervised-learning": "无监督学习",
     "web-media-encryption": "Web 媒体加密",
-    "web-media-technology": "Web 媒体技术"
+    "web-media-technology": "Web 媒体技术",
+    "deep-learning": "深度学习"
   }
 }

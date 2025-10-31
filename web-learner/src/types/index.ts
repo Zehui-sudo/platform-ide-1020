@@ -97,6 +97,13 @@ export interface KnowledgeIndexEntry {
   codeExamples?: string[];      // 代码示例中的关键函数/类名
 }
 
+export interface LearningConfigSnapshot {
+  subjects: string[];
+  pathMap?: Partial<Record<string, string | null>>;
+  labelMap?: Record<string, string>;
+  generatedAt?: string;
+}
+
 // 全局状态类型
 export interface LearningState {
   currentPath: LearningPath | null;
@@ -180,6 +187,8 @@ export interface ChatSession {
 export interface LearningActions {
   loadPath: (subject: string) => Promise<void>;
   discoverSubjects: () => Promise<void>; // 自动发现可用学科与学习路径
+  setLearningConfig: (config: LearningConfigSnapshot) => void;
+  refreshLearningConfig: (options?: { config?: LearningConfigSnapshot | null; slugs?: string[]; force?: boolean }) => Promise<LearningConfigSnapshot | null>;
   initializeAllPaths: () => Promise<void>; // 初始化所有学科的学习路径
   loadSection: (sectionId: string) => Promise<void>;
   getFirstSectionId: (subject?: string) => string | null;

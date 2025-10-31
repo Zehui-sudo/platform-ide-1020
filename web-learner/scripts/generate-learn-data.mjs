@@ -1,17 +1,13 @@
 #!/usr/bin/env node
 import fsp from 'fs/promises';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(__dirname, '..');
-const publicDir = path.join(projectRoot, 'public');
-const contentRoot = path.join(publicDir, 'content');
-const outputRoot = path.join(publicDir, 'learn-data');
-
+const CLI_TAG = '[generate-learn-data]';
 const idRegex = /\(id:\s*([^)]+)\)/i;
 
-const cleanTitle = (input) => {
+export const cleanTitle = (input) => {
   if (!input) return '';
 
   let title = input
@@ -45,11 +41,9 @@ const cleanTitle = (input) => {
 
 const normalizeForComparison = (input) => cleanTitle(input).replace(/\s+/g, '').toLowerCase();
 
-function ensureArray(value) {
-  return Array.isArray(value) ? value : [];
-}
+const ensureArray = (value) => (Array.isArray(value) ? value : []);
 
-function parseLearningPath(markdown, subjectSlug) {
+export const parseLearningPath = (markdown, subjectSlug) => {
   const lines = markdown.split(/\r?\n/);
   const learningPath = {
     id: '',
@@ -83,7 +77,7 @@ function parseLearningPath(markdown, subjectSlug) {
       const rawTitle = line.replace(/^##\s*/, '').replace(idRegex, '').trim();
       const title = cleanTitle(rawTitle);
       if (!match) {
-        console.warn(`[generate-learn-data] 章节缺少 id: ${subjectSlug} -> ${line}`);
+        console.warn(`${CLI_TAG} 章节缺少 id: ${subjectSlug} -> ${line}`);
         continue;
       }
       currentChapter = {
@@ -99,7 +93,7 @@ function parseLearningPath(markdown, subjectSlug) {
       const rawTitle = line.replace(/^###\s*/, '').replace(idRegex, '').trim();
       const title = cleanTitle(rawTitle);
       if (!match) {
-        console.warn(`[generate-learn-data] 小节分组缺少 id: ${subjectSlug} -> ${line}`);
+        console.warn(`${CLI_TAG} 小节分组缺少 id: ${subjectSlug} -> ${line}`);
         continue;
       }
       currentGroup = {
@@ -114,7 +108,7 @@ function parseLearningPath(markdown, subjectSlug) {
       const rawTitle = line.replace(/^####\s*/, '').replace(idRegex, '').trim();
       const title = cleanTitle(rawTitle);
       if (!match) {
-        console.warn(`[generate-learn-data] 节缺少 id: ${subjectSlug} -> ${line}`);
+        console.warn(`${CLI_TAG} 节缺少 id: ${subjectSlug} -> ${line}`);
         continue;
       }
       const section = {
@@ -156,9 +150,34 @@ function parseLearningPath(markdown, subjectSlug) {
   });
 
   return learningPath;
-}
+};
 
-async function removeStaleJsonFiles(dir) {
+export const resolvePaths = (projectRoot) => {
+  const root = projectRoot ?? path.resolve(__dirname, '..');
+  const publicDir = path.join(root, 'public');
+  return {
+    projectRoot: root,
+    publicDir,
+    contentRoot: path.join(publicDir, 'content'),
+    outputRoot: path.join(publicDir, 'learn-data'),
+  };
+};
+
+export const discoverSubjectSlugs = async (contentRoot) => {
+  try {
+    const entries = await fsp.readdir(contentRoot, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+      .map((entry) => entry.name);
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      return [];
+    }
+    throw error;
+  }
+};
+
+export async function removeStaleJsonFiles(dir) {
   try {
     const entries = await fsp.readdir(dir, { withFileTypes: true });
     await Promise.all(
@@ -169,64 +188,275 @@ async function removeStaleJsonFiles(dir) {
       }),
     );
   } catch (error) {
-    if (error.code !== 'ENOENT') {
+    if (!(error && error.code === 'ENOENT')) {
       throw error;
     }
   }
 }
 
-async function main() {
+const learningConfigPath = (outputRoot) => path.join(outputRoot, 'learning-config.json');
+
+export const readLearningConfig = async (outputRoot) => {
   try {
-    const start = Date.now();
-    await fsp.mkdir(outputRoot, { recursive: true });
-    await removeStaleJsonFiles(outputRoot);
+    const raw = await fsp.readFile(learningConfigPath(outputRoot), 'utf8');
+    return JSON.parse(raw);
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+};
 
-    const subjects = [];
-    const pathMap = {};
-    const labelMap = {};
+export const writeLearningConfig = async (outputRoot, config) => {
+  await fsp.writeFile(
+    learningConfigPath(outputRoot),
+    JSON.stringify(config, null, 2),
+    'utf8',
+  );
+};
 
-    const entries = await fsp.readdir(contentRoot, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+export async function generateSubjectLearnData({
+  projectRoot,
+  contentRoot,
+  outputRoot,
+  subjectSlug,
+  logger = console,
+} = {}) {
+  if (!subjectSlug) {
+    throw new Error('generateSubjectLearnData: subjectSlug is required');
+  }
 
-      const subjectSlug = entry.name;
-      const subjectDir = path.join(contentRoot, subjectSlug);
-      const files = await fsp.readdir(subjectDir);
-      const learningPathFile = files.find((file) => file.endsWith('learning-path.md'));
-      if (!learningPathFile) {
-        console.warn(`[generate-learn-data] 未找到学习路径文件: ${subjectSlug}`);
+  const paths = resolvePaths(projectRoot);
+  const contentDir = contentRoot ?? paths.contentRoot;
+  const outputDir = outputRoot ?? paths.outputRoot;
+  const subjectDir = path.join(contentDir, subjectSlug);
+
+  let stat;
+  try {
+    stat = await fsp.stat(subjectDir);
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      logger.warn(`${CLI_TAG} 未找到课程目录: ${subjectSlug}`);
+      return null;
+    }
+    throw error;
+  }
+
+  if (!stat.isDirectory()) {
+    logger.warn(`${CLI_TAG} 目标不是有效课程目录: ${subjectSlug}`);
+    return null;
+  }
+
+  const files = await fsp.readdir(subjectDir);
+  const learningPathFile = files.find((file) => file.endsWith('learning-path.md'));
+
+  if (!learningPathFile) {
+    logger.warn(`${CLI_TAG} 未找到学习路径文件: ${subjectSlug}`);
+    return null;
+  }
+
+  const markdown = await fsp.readFile(path.join(subjectDir, learningPathFile), 'utf8');
+  const parsed = parseLearningPath(markdown, subjectSlug);
+  const label = parsed.title || subjectSlug;
+  const relativeJsonPath = `/learn-data/${subjectSlug}.json`;
+  const targetFile = path.join(outputDir, `${subjectSlug}.json`);
+
+  await fsp.mkdir(outputDir, { recursive: true });
+  await fsp.writeFile(targetFile, JSON.stringify(parsed, null, 2), 'utf8');
+
+  return {
+    subjectSlug,
+    label,
+    relativeJsonPath,
+    parsed,
+    targetFile,
+  };
+}
+
+export async function generateLearnData({
+  projectRoot,
+  subjectSlugs,
+  cleanOutput,
+  logger = console,
+  skipConfig = false,
+} = {}) {
+  const paths = resolvePaths(projectRoot);
+  await fsp.mkdir(paths.outputRoot, { recursive: true });
+
+  const uniqueSubjects = subjectSlugs
+    ? Array.from(new Set(subjectSlugs.filter(Boolean)))
+    : null;
+  const subjects =
+    uniqueSubjects && uniqueSubjects.length > 0
+      ? uniqueSubjects
+      : await discoverSubjectSlugs(paths.contentRoot);
+  const isPartial = Boolean(uniqueSubjects && uniqueSubjects.length > 0);
+
+  const shouldClean =
+    typeof cleanOutput === 'boolean'
+      ? cleanOutput
+      : subjects.length > 0 && (!uniqueSubjects || uniqueSubjects.length === 0);
+
+  if (shouldClean) {
+    await removeStaleJsonFiles(paths.outputRoot);
+  }
+
+  const processed = [];
+  const skipped = [];
+  const pathMap = {};
+  const labelMap = {};
+  let firstError = null;
+
+  for (const subjectSlug of subjects) {
+    try {
+      const result = await generateSubjectLearnData({
+        projectRoot: paths.projectRoot,
+        contentRoot: paths.contentRoot,
+        outputRoot: paths.outputRoot,
+        subjectSlug,
+        logger,
+      });
+      if (!result) {
+        skipped.push(subjectSlug);
         continue;
       }
+      processed.push(subjectSlug);
+      pathMap[subjectSlug] = result.relativeJsonPath;
+      labelMap[subjectSlug] = result.label;
+    } catch (error) {
+      skipped.push(subjectSlug);
+      if (!firstError) {
+        firstError = error;
+      }
+      logger.error?.(`${CLI_TAG} 生成课程数据失败: ${subjectSlug}`, error);
+    }
+  }
 
-      const markdown = await fsp.readFile(path.join(subjectDir, learningPathFile), 'utf8');
-      const parsed = parseLearningPath(markdown, subjectSlug);
-      const label = parsed.title || subjectSlug;
-      const relativeJsonPath = `/learn-data/${subjectSlug}.json`;
+  const sortedProcessed = [...processed].sort((a, b) => a.localeCompare(b));
+  let config = {
+    generatedAt: new Date().toISOString(),
+    subjects: sortedProcessed,
+    pathMap,
+    labelMap,
+  };
 
-      await fsp.writeFile(path.join(outputRoot, `${subjectSlug}.json`), JSON.stringify(parsed, null, 2), 'utf8');
+  if (isPartial) {
+    const existingConfig = await readLearningConfig(paths.outputRoot);
+    if (existingConfig) {
+      if (sortedProcessed.length === 0) {
+        config = existingConfig;
+      } else {
+        const mergedSubjects = Array.from(
+          new Set([...(existingConfig.subjects ?? []), ...sortedProcessed]),
+        ).sort((a, b) => a.localeCompare(b));
+        config = {
+          generatedAt: new Date().toISOString(),
+          subjects: mergedSubjects,
+          pathMap: { ...(existingConfig.pathMap ?? {}), ...pathMap },
+          labelMap: { ...(existingConfig.labelMap ?? {}), ...labelMap },
+        };
+      }
+    }
+  }
 
-      subjects.push(subjectSlug);
-      pathMap[subjectSlug] = relativeJsonPath;
-      labelMap[subjectSlug] = label;
+  const shouldWriteConfig =
+    !skipConfig && (!isPartial || sortedProcessed.length > 0);
+
+  if (shouldWriteConfig) {
+    await writeLearningConfig(paths.outputRoot, config);
+  }
+
+  if (firstError) {
+    throw firstError;
+  }
+
+  return {
+    config,
+    processedSubjects: sortedProcessed,
+    skippedSubjects: skipped,
+    paths,
+  };
+}
+
+const parseCliArgs = (argv) => {
+  const args = argv.slice(2);
+  const options = {};
+
+  for (const raw of args) {
+    if (!raw) continue;
+    if (raw === '--help' || raw === '-h') {
+      options.help = true;
+    } else if (raw === '--clean') {
+      options.cleanOutput = true;
+    } else if (raw === '--no-clean') {
+      options.cleanOutput = false;
+    } else if (raw.startsWith('--subjects=')) {
+      const list = raw.slice('--subjects='.length);
+      options.subjectSlugs = list
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    } else {
+      throw new Error(`未知参数: ${raw}`);
+    }
+  }
+
+  return options;
+};
+
+const printHelp = () => {
+  console.log(`Usage: node scripts/generate-learn-data.mjs [options]
+
+Options:
+  --subjects=slug1,slug2  仅生成指定科目的数据
+  --clean                 在生成前清空输出目录
+  --no-clean              保留已有输出文件
+  -h, --help              显示帮助
+
+默认情况下，当未指定 --subjects 时会清空输出目录。若指定了 --subjects 默认不会清空，可通过 --clean 强制清空。`);
+};
+
+const isCliEntry = () => {
+  if (!process.argv?.[1]) return false;
+  try {
+    return pathToFileURL(process.argv[1]).href === import.meta.url;
+  } catch {
+    return false;
+  }
+};
+
+async function main() {
+  try {
+    const cliOptions = parseCliArgs(process.argv);
+    if (cliOptions.help) {
+      printHelp();
+      return;
     }
 
-    subjects.sort((a, b) => a.localeCompare(b));
+    const start = Date.now();
+    const shouldClean =
+      typeof cliOptions.cleanOutput === 'boolean'
+        ? cliOptions.cleanOutput
+        : !(cliOptions.subjectSlugs && cliOptions.subjectSlugs.length > 0);
 
-    const config = {
-      generatedAt: new Date().toISOString(),
-      subjects,
-      pathMap,
-      labelMap,
-    };
-
-    await fsp.writeFile(path.join(outputRoot, 'learning-config.json'), JSON.stringify(config, null, 2), 'utf8');
+    const { processedSubjects } = await generateLearnData({
+      projectRoot: path.resolve(__dirname, '..'),
+      subjectSlugs: cliOptions.subjectSlugs,
+      cleanOutput: shouldClean,
+      logger: console,
+    });
 
     const duration = Date.now() - start;
-    console.log(`[generate-learn-data] 生成完成：${subjects.length} 门课程，耗时 ${duration}ms`);
+    console.log(
+      `${CLI_TAG} 生成完成：${processedSubjects.length} 门课程，耗时 ${duration}ms`,
+    );
   } catch (error) {
-    console.error('[generate-learn-data] 生成失败:', error);
+    console.error(`${CLI_TAG} 生成失败:`, error);
     process.exitCode = 1;
   }
 }
 
-main();
+if (isCliEntry()) {
+  main();
+}

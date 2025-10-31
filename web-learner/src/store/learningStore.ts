@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { LearningState, LearningActions, LearningPath, SectionContent, ChatMessage, ChatSession, ContextReference, AIProviderType, Chapter, SectionLink, Section } from '@/types';
+import type { LearningState, LearningActions, LearningPath, SectionContent, ChatMessage, ChatSession, ContextReference, AIProviderType, Chapter, SectionLink, Section, LearningConfigSnapshot } from '@/types';
 import { getKnowledgeLinkService } from '@/services/knowledgeLinkService';
 // contentPath legacy helpers are no longer used for section resolution
 
@@ -39,11 +39,7 @@ const cleanTitle = (input: string): string => {
 const normalizeForComparison = (input: string): string =>
   cleanTitle(input).replace(/\s+/g, '').toLowerCase();
 
-type LearningConfig = {
-  subjects: string[];
-  pathMap?: Partial<Record<string, string | null>>;
-  labelMap?: Record<string, string>;
-};
+type LearningConfig = LearningConfigSnapshot;
 
 const learningConfigEndpoints = ['/learn-data/learning-config.json', '/api/learning-config'] as const;
 const configCache = new Map<string, LearningConfig>();
@@ -335,7 +331,29 @@ const createWelcomeMessage = (userName?: string): ChatMessage => ({
 
 export const useLearningStore = create<LearningState & LearningActions>()(
   persist(
-    (set, get) => ({
+    (set, get) => {
+      const applyLearningConfig = (cfg: LearningConfig | null | undefined) => {
+        if (!cfg) {
+          return null;
+        }
+        set({
+          availableSubjects: cfg.subjects,
+          subjectPathMap: cfg.pathMap || {},
+          subjectLabels: cfg.labelMap || {},
+        });
+        learningConfigEndpoints.forEach((endpoint) => {
+          configCache.set(endpoint, cfg);
+        });
+        return cfg;
+      };
+
+      const reloadLearningConfig = async (): Promise<LearningConfig> => {
+        configCache.clear();
+        const cfg = await getLearningConfig();
+        return applyLearningConfig(cfg)!;
+      };
+
+      return {
       // State
       currentPath: null,
       currentSection: null,
@@ -379,6 +397,62 @@ export const useLearningStore = create<LearningState & LearningActions>()(
       // hybridServiceInitialized removed
 
       // Actions
+      setLearningConfig: (config: LearningConfigSnapshot | null | undefined) => {
+        applyLearningConfig(config as LearningConfig | null);
+      },
+
+      refreshLearningConfig: async (options?: { config?: LearningConfigSnapshot | null; slugs?: string[]; force?: boolean }) => {
+        const opts = options ?? {};
+        const providedConfig = opts.config ?? null;
+        if (providedConfig) {
+          return applyLearningConfig(providedConfig as LearningConfig | null);
+        }
+
+        const slugs = Array.isArray(opts.slugs)
+          ? Array.from(new Set(opts.slugs.filter((slug): slug is string => typeof slug === 'string' && slug.trim().length > 0)))
+          : [];
+
+        if (slugs.length > 0) {
+          try {
+            const res = await fetch('/api/learning-config/refresh', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ slugs }),
+              cache: 'no-store',
+            });
+            if (!res.ok) {
+              let reason = `Refresh request failed (${res.status})`;
+              try {
+                const data = await res.json();
+                if (data?.error) {
+                  reason = String(data.error);
+                }
+              } catch {
+                try {
+                  const text = await res.text();
+                  if (text) reason = text;
+                } catch {}
+              }
+              throw new Error(reason);
+            }
+            const data = await res.json() as { config?: LearningConfig };
+            if (data?.config) {
+              return applyLearningConfig(data.config);
+            }
+          } catch (error) {
+            console.warn('[learningStore] refreshLearningConfig 请求失败', error);
+            throw error;
+          }
+        }
+
+        if (opts.force) {
+          return reloadLearningConfig();
+        }
+
+        // 默认返回最新配置
+        return reloadLearningConfig();
+      },
+
       getFirstSectionId: (subject?: string) => {
         const state = get();
         const path = subject
@@ -410,11 +484,7 @@ export const useLearningStore = create<LearningState & LearningActions>()(
       discoverSubjects: async () => {
         try {
           const cfg = await getLearningConfig();
-          set({
-            availableSubjects: cfg.subjects,
-            subjectPathMap: cfg.pathMap,
-            subjectLabels: cfg.labelMap || {},
-          });
+          applyLearningConfig(cfg);
         } catch (e) {
           // If discovery fails, leave state undefined and let downstream handlers fallback
           console.warn('discoverSubjects failed', e);
@@ -1109,7 +1179,8 @@ export const useLearningStore = create<LearningState & LearningActions>()(
           set({ sendingMessage: false });
         }
       },
-    }),
+    };
+  },
     {
       name: 'learning-store',
       partialize: (state: import('@/types').LearningState & import('@/types').LearningActions) => ({

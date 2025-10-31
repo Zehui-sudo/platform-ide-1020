@@ -148,7 +148,7 @@ interface ThemeGeneratorState {
   subscribeToContent: (jobId: string) => void;
   cancelContentGeneration: () => Promise<void>;
   cancelOutlineGeneration: () => Promise<void>;
-  loadCourse: () => void;
+  loadCourse: () => Promise<void>;
   reset: () => void;
   restartFlow: (options?: { keepInputs?: boolean }) => void;
   rehydrate: () => Promise<void>;
@@ -588,7 +588,7 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()((set, get) =
     set({ stage: 'idle', isSubscribing: false });
   },
 
-  loadCourse: () => {
+  loadCourse: async () => {
     const { contentResult, outlineResult } = get();
     try {
       const pub = contentResult?.publishDir;
@@ -606,7 +606,25 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()((set, get) =
       };
       const slug = getSlug();
       if (slug) {
-        useLearningStore.getState().loadPath(slug);
+        const store = useLearningStore.getState();
+        const subjects = store.availableSubjects;
+        if (!subjects || !subjects.includes(slug)) {
+          try {
+            await store.refreshLearningConfig({ slugs: [slug], force: true });
+          } catch (error) {
+            console.warn('[themeGeneratorStore] refreshLearningConfig failed', error);
+          }
+        }
+        await store.loadPath(slug);
+        let loadedPath = useLearningStore.getState().currentPath;
+        if (!loadedPath || loadedPath.subject !== slug) {
+          try {
+            await store.refreshLearningConfig({ slugs: [slug], force: true });
+          } catch (error) {
+            console.warn('[themeGeneratorStore] 二次 refreshLearningConfig 失败', error);
+          }
+          await store.loadPath(slug);
+        }
       }
     } catch {}
   },
@@ -655,7 +673,22 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()((set, get) =
       const contentDismissed = !!rawContentJob && dismissed.has(rawContentJob.id);
 
       const outlineJob = outlineDismissed ? null : rawOutlineJob;
-      const contentJob = contentDismissed ? null : rawContentJob;
+      let contentJob = contentDismissed ? null : rawContentJob;
+
+      const targetSubject =
+        outlineJob?.subject?.trim() ||
+        rawOutlineJob?.subject?.trim() ||
+        rawContentJob?.subject?.trim() ||
+        null;
+
+      if (
+        contentJob &&
+        targetSubject &&
+        contentJob.subject &&
+        contentJob.subject.trim() !== targetSubject
+      ) {
+        contentJob = null;
+      }
 
       const outlineResultPromise =
         outlineJob && outlineJob.status === 'success'
@@ -700,7 +733,7 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()((set, get) =
         outlineStage: toStageState(outlineJob?.stages?.outline),
         contentStage: toStageState(contentJob?.stages?.content),
         outlineResult: (outlineResult ?? state.outlineResult) as OutlineResultPayload | null,
-        contentResult: (contentResult ?? state.contentResult) as ContentResultPayload | null,
+        contentResult: contentJob ? ((contentResult ?? state.contentResult) as ContentResultPayload | null) : null,
         stage: inferredStage,
         contentSaved: savedFromContent ?? (state.contentSaved ?? null),
         contentTotal: state.contentTotal,

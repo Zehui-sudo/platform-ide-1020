@@ -1,0 +1,134 @@
+{
+  "id": "ai-image-generation",
+  "title": "AI图像生成",
+  "subject": "ai-image-generation",
+  "chapters": [
+    {
+      "id": "genai-ch-1",
+      "title": "第1章：基础篇 · 生成模型的语言与基石",
+      "groups": [],
+      "sections": [
+        {
+          "id": "genai-sec-1-1",
+          "title": "根本问题：何为“生成”？",
+          "chapterId": "genai-ch-1"
+        },
+        {
+          "id": "genai-sec-1-2",
+          "title": "核心构件：深度神经网络与反向传播",
+          "chapterId": "genai-ch-1"
+        },
+        {
+          "id": "genai-sec-1-3",
+          "title": "核心构件：卷积神经网络",
+          "chapterId": "genai-ch-1"
+        }
+      ]
+    },
+    {
+      "id": "genai-ch-2",
+      "title": "第2章：显式密度模型 · 用潜变量描绘数据分布",
+      "groups": [],
+      "sections": [
+        {
+          "id": "genai-sec-2-1",
+          "title": "根本问题：如何学习一个可控的、紧凑的数据表示？",
+          "chapterId": "genai-ch-2"
+        },
+        {
+          "id": "genai-sec-2-2",
+          "title": "核心思想与机制：变分自编码器",
+          "chapterId": "genai-ch-2"
+        }
+      ]
+    },
+    {
+      "id": "genai-ch-3",
+      "title": "第3章：隐式生成模型 · 通过对抗博弈创造真实",
+      "groups": [],
+      "sections": [
+        {
+          "id": "genai-sec-3-1",
+          "title": "根本问题：能否不直接建模概率，而是让模型学会“以假乱真”？",
+          "chapterId": "genai-ch-3"
+        },
+        {
+          "id": "genai-sec-3-2",
+          "title": "关键实现：深度卷积生成对抗网络",
+          "chapterId": "genai-ch-3"
+        },
+        {
+          "id": "genai-sec-3-3",
+          "title": "核心挑战与改进：训练不稳定性",
+          "chapterId": "genai-ch-3"
+        },
+        {
+          "id": "genai-sec-3-4",
+          "title": "解决方案：Wasserstein GAN",
+          "chapterId": "genai-ch-3"
+        }
+      ]
+    },
+    {
+      "id": "genai-ch-4",
+      "title": "第4章：扩散模型 · 从噪声中逐步雕刻图像",
+      "groups": [],
+      "sections": [
+        {
+          "id": "genai-sec-4-1",
+          "title": "根本问题：除了博弈，能否通过一个可控的、迭代的过程生成图像？",
+          "chapterId": "genai-ch-4"
+        },
+        {
+          "id": "genai-sec-4-2",
+          "title": "核心机制：去噪扩散概率模型",
+          "chapterId": "genai-ch-4"
+        }
+      ]
+    },
+    {
+      "id": "genai-ch-5",
+      "title": "第5章：控制生成 · 从随机到定向的飞跃",
+      "groups": [],
+      "sections": [
+        {
+          "id": "genai-sec-5-1",
+          "title": "根本问题：如何让生成模型听从我们的指令？",
+          "chapterId": "genai-ch-5"
+        },
+        {
+          "id": "genai-sec-5-2",
+          "title": "关键构件：理解条件 - 从RNN到Transformer",
+          "chapterId": "genai-ch-5"
+        },
+        {
+          "id": "genai-sec-5-3",
+          "title": "控制技术：如何将条件注入生成模型",
+          "chapterId": "genai-ch-5"
+        }
+      ]
+    },
+    {
+      "id": "genai-ch-6",
+      "title": "第6章：综合与展望 · 评估、权衡与未来",
+      "groups": [],
+      "sections": [
+        {
+          "id": "genai-sec-6-1",
+          "title": "核心议题：如何评价生成模型的好坏？",
+          "chapterId": "genai-ch-6"
+        },
+        {
+          "id": "genai-sec-6-2",
+          "title": "宏观视角：生成模型的“不可能三角”",
+          "chapterId": "genai-ch-6"
+        },
+        {
+          "id": "genai-sec-6-3",
+          "title": "实践与伦理：负责任的创新",
+          "chapterId": "genai-ch-6"
+        }
+      ]
+    }
+  ]
+}

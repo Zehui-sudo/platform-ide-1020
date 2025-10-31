@@ -1,0 +1,127 @@
+{
+  "id": "quantitative-investing",
+  "title": "量化投资",
+  "subject": "quantitative-investing",
+  "chapters": [
+    {
+      "id": "quant-ch-1",
+      "title": "第1章：量化投资的宏观图景与核心问题",
+      "groups": [],
+      "sections": [
+        {
+          "id": "quant-sec-1-1",
+          "title": "根本问题：我们为何需要量化投资？",
+          "chapterId": "quant-ch-1"
+        },
+        {
+          "id": "quant-sec-1-2",
+          "title": "收益的来源：Alpha与Beta到底是什么？",
+          "chapterId": "quant-ch-1"
+        },
+        {
+          "id": "quant-sec-1-3",
+          "title": "量化策略的“流水线”：从想法到执行",
+          "chapterId": "quant-ch-1"
+        }
+      ]
+    },
+    {
+      "id": "quant-ch-2",
+      "title": "第2章：金融数据的结构与特征工程",
+      "groups": [],
+      "sections": [
+        {
+          "id": "quant-sec-2-1",
+          "title": "根本问题：为何金融数据处理如此特殊？",
+          "chapterId": "quant-ch-2"
+        },
+        {
+          "id": "quant-sec-2-2",
+          "title": "机制拆解：构建有意义的特征",
+          "chapterId": "quant-ch-2"
+        },
+        {
+          "id": "quant-sec-2-3",
+          "title": "机制拆解：定义预测目标",
+          "chapterId": "quant-ch-2"
+        }
+      ]
+    },
+    {
+      "id": "quant-ch-3",
+      "title": "第3章：量化建模：从因子到机器学习",
+      "groups": [],
+      "sections": [
+        {
+          "id": "quant-sec-3-1",
+          "title": "核心思想：构建模型，从数据中发现预测规律",
+          "chapterId": "quant-ch-3"
+        },
+        {
+          "id": "quant-sec-3-2",
+          "title": "工具一：线性因子模型",
+          "chapterId": "quant-ch-3"
+        },
+        {
+          "id": "quant-sec-3-3",
+          "title": "工具二：集成学习方法",
+          "chapterId": "quant-ch-3"
+        },
+        {
+          "id": "quant-sec-3-4",
+          "title": "关键步骤：特征重要性分析",
+          "chapterId": "quant-ch-3"
+        }
+      ]
+    },
+    {
+      "id": "quant-ch-4",
+      "title": "第4章：策略回测：在虚拟世界中验证成败",
+      "groups": [],
+      "sections": [
+        {
+          "id": "quant-sec-4-1",
+          "title": "根本问题：如何科学地评估一个策略的好坏？",
+          "chapterId": "quant-ch-4"
+        },
+        {
+          "id": "quant-sec-4-2",
+          "title": "回测的“七宗罪”：常见的陷阱与偏误",
+          "chapterId": "quant-ch-4"
+        },
+        {
+          "id": "quant-sec-4-3",
+          "title": "机制拆解：稳健的回测框架",
+          "chapterId": "quant-ch-4"
+        }
+      ]
+    },
+    {
+      "id": "quant-ch-5",
+      "title": "第5章：从策略到投资组合：风险与资金管理",
+      "groups": [],
+      "sections": [
+        {
+          "id": "quant-sec-5-1",
+          "title": "根本问题：有了交易信号后，我应该买多少？",
+          "chapterId": "quant-ch-5"
+        },
+        {
+          "id": "quant-sec-5-2",
+          "title": "机制拆解：凯利公式",
+          "chapterId": "quant-ch-5"
+        },
+        {
+          "id": "quant-sec-5-3",
+          "title": "组合构建与风险管理",
+          "chapterId": "quant-ch-5"
+        },
+        {
+          "id": "quant-sec-5-4",
+          "title": "课程总结与未来之路",
+          "chapterId": "quant-ch-5"
+        }
+      ]
+    }
+  ]
+}

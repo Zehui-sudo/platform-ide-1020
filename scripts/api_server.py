@@ -329,6 +329,92 @@ class JobManager:
 job_manager = JobManager()
 logger = logging.getLogger("api_server")
 
+# 自动补齐生成后的课程 JSON
+_learn_data_refresh_tasks: Dict[str, asyncio.Task[None]] = {}
+
+
+async def _ensure_learn_data_for_slug(slug: str) -> None:
+    if not slug:
+        return
+    script_path = REPO_ROOT / "web-learner" / "scripts" / "generate-learn-data.mjs"
+    if not script_path.exists():
+        logger.error(
+            "[learn-data:refresh] 脚本不存在，跳过课程补齐",
+            extra={"slug": slug, "script": str(script_path)},
+        )
+        return
+
+    cmd = ["node", str(script_path), f"--subjects={slug}", "--no-clean"]
+    try:
+        logger.info("[learn-data:refresh] 开始补齐课程", extra={"slug": slug, "cmd": cmd})
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=str(REPO_ROOT),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+    except Exception as exc:  # pragma: no cover - 防御性日志
+        logger.exception(
+            "[learn-data:refresh] 启动脚本失败",
+            extra={"slug": slug, "cmd": cmd, "error": str(exc)},
+        )
+        return
+
+    std_out = stdout.decode("utf-8", errors="ignore").strip() if stdout else ""
+    std_err = stderr.decode("utf-8", errors="ignore").strip() if stderr else ""
+
+    if process.returncode != 0:
+        logger.error(
+            "[learn-data:refresh] 补齐失败",
+            extra={
+                "slug": slug,
+                "cmd": cmd,
+                "returncode": process.returncode,
+                "stdout": std_out,
+                "stderr": std_err,
+            },
+        )
+        return
+
+    logger.info(
+        "[learn-data:refresh] 补齐完成",
+        extra={"slug": slug, "stdout": std_out, "stderr": std_err},
+    )
+
+
+def _schedule_learn_data_refresh(slug: str) -> None:
+    if not slug:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        logger.warning(
+            "[learn-data:refresh] 无运行中的事件循环，跳过调度", extra={"slug": slug}
+        )
+        return
+
+    existing = _learn_data_refresh_tasks.get(slug)
+    if existing and not existing.done():
+        logger.debug(
+            "[learn-data:refresh] 已存在进行中的任务，跳过重复调度", extra={"slug": slug}
+        )
+        return
+
+    task = loop.create_task(_ensure_learn_data_for_slug(slug))
+    _learn_data_refresh_tasks[slug] = task
+
+    def _cleanup(done: asyncio.Task[None], *, key: str) -> None:
+        _learn_data_refresh_tasks.pop(key, None)
+        try:
+            done.result()
+        except Exception as exc:  # pragma: no cover - 防御性日志
+            logger.exception(
+                "[learn-data:refresh] 任务执行出错", extra={"slug": key, "error": str(exc)}
+            )
+
+    task.add_done_callback(lambda done, key=slug: _cleanup(done, key=key))
+
 
 # ----------------------------
 # 工具函数
@@ -662,6 +748,7 @@ def _parse_content_line(
                         "logPath": str(log_path),
                     },
                 )
+                _schedule_learn_data_refresh(slug)
             else:
                 job_manager.broadcast(job, "file", {"reportPath": report_path})
         except Exception:

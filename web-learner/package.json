@@ -7,6 +7,7 @@
     "dev": "next dev",
     "prebuild": "node ./scripts/generate-learn-data.mjs && node ./scripts/generate-font-manifest.mjs",
     "build": "next build",
+    "postbuild": "node ./scripts/postbuild-fill-learn-data.mjs",
     "start": "next start",
     "lint": "next lint",
     "lint:mermaid": "node ./scripts/lint-mermaid.mjs",

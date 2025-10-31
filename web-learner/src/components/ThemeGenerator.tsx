@@ -643,6 +643,7 @@ const ContentReadyView = () => {
   const router = useRouter();
   const { contentResult, outlineResult, themeName, setFormField, setUiOpen, restartFlow } = useThemeGeneratorStore();
   const getFirstSectionId = useLearningStore((state) => state.getFirstSectionId);
+  const refreshLearningConfig = useLearningStore((state) => state.refreshLearningConfig);
 
   const title = outlineResult?.reconstructed_outline?.title || themeName || '新主题';
   const chapterCount = outlineResult?.reconstructed_outline?.groups?.length || 0;
@@ -667,8 +668,33 @@ const ContentReadyView = () => {
       }
       
       if (slug) {
-        // 先加载 path
-        await useLearningStore.getState().loadPath(slug);
+        const store = useLearningStore.getState();
+        const subjects = store.availableSubjects;
+        if (!subjects || !subjects.includes(slug)) {
+          try {
+            await refreshLearningConfig({ slugs: [slug], force: true });
+          } catch (refreshError) {
+            console.warn('[ThemeGenerator] refreshLearningConfig failed', refreshError);
+          }
+        }
+
+        // 先尝试加载 path
+        await store.loadPath(slug);
+
+        let loadedPath = useLearningStore.getState().currentPath;
+        if (!loadedPath || loadedPath.subject !== slug) {
+          console.warn('[ThemeGenerator] 加载课程后仍未命中目标 subject，尝试重新刷新配置', {
+            expected: slug,
+            actual: loadedPath?.subject,
+          });
+          try {
+            await refreshLearningConfig({ slugs: [slug], force: true });
+          } catch (refreshError) {
+            console.warn('[ThemeGenerator] 二次 refreshLearningConfig 失败', refreshError);
+          }
+          await store.loadPath(slug);
+          loadedPath = useLearningStore.getState().currentPath;
+        }
         
         // 获取第一个 section
         const firstSectionId = getFirstSectionId(slug);
