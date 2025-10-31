@@ -128,6 +128,7 @@ class JobRecord:
     processed: Optional[int] = None
     pid: Optional[int] = None
     stages: Dict[str, StageState] = field(default_factory=_default_stages)
+    consumed: bool = False
     process: Optional[asyncio.subprocess.Process] = None
     subscribers: Dict[str, "asyncio.Queue[Dict[str, Any]]"] = field(default_factory=dict)
 
@@ -144,6 +145,7 @@ class JobRecord:
             "outputPath": self.output_path,
             "logPath": self.log_path,
             "stages": {key: stage.to_dict() for key, stage in self.stages.items()},
+            "consumed": self.consumed,
         }
 
 
@@ -231,11 +233,22 @@ class JobManager:
     def list_jobs(self) -> List[JobRecord]:
         return list(self._jobs.values())
 
-    def latest_job(self, job_type: str) -> Optional[JobRecord]:
+    def latest_job(self, job_type: str, *, include_consumed: bool = False) -> Optional[JobRecord]:
         candidates = [job for job in self._jobs.values() if job.type == job_type]
+        if not include_consumed:
+            candidates = [job for job in candidates if not job.consumed]
         if not candidates:
             return None
         return max(candidates, key=lambda job: job.start_ts)
+
+    def mark_consumed(self, job_id: str) -> bool:
+        job = self._jobs.get(job_id)
+        if not job:
+            return False
+        if not job.consumed:
+            job.consumed = True
+            self._persist_jobs()
+        return True
 
     def _serialize_job(self, job: JobRecord) -> Dict[str, Any]:
         data = job.snapshot()
@@ -301,6 +314,7 @@ class JobManager:
                     total_to_fetch=item.get("totalToFetch"),
                     processed=item.get("processed"),
                     pid=item.get("pid"),
+                    consumed=bool(item.get("consumed")),
                 )
                 if isinstance(item.get("endTimeIso"), str):
                     with suppress(Exception):
@@ -1148,8 +1162,8 @@ async def pipeline_jobs() -> JSONResponse:
 
 
 @app.get("/api/pipeline/jobs/latest")
-async def pipeline_jobs_latest(type: str) -> JSONResponse:
-    job = job_manager.latest_job(type)
+async def pipeline_jobs_latest(type: str, include_consumed: bool = False) -> JSONResponse:
+    job = job_manager.latest_job(type, include_consumed=include_consumed)
     if not job:
         return JSONResponse({"job": None})
     return JSONResponse({"job": _job_payload(job)})
@@ -1161,6 +1175,13 @@ async def pipeline_jobs_detail(job_id: str) -> JSONResponse:
     if not job:
         raise HTTPException(status_code=404, detail="job not found")
     return JSONResponse({"job": _job_payload(job)})
+
+
+@app.post("/api/pipeline/jobs/{job_id}/consume")
+async def pipeline_jobs_consume(job_id: str) -> Dict[str, Any]:
+    if not job_manager.mark_consumed(job_id):
+        raise HTTPException(status_code=404, detail="job not found")
+    return {"status": "ok"}
 
 
 @app.get("/")

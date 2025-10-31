@@ -31,6 +31,7 @@ interface PipelineJobSnapshot {
     content?: SnapshotStage;
     [key: string]: SnapshotStage | undefined;
   };
+  consumed?: boolean;
 }
 
 interface OutlineSectionSummary {
@@ -149,6 +150,7 @@ interface ThemeGeneratorState {
   cancelContentGeneration: () => Promise<void>;
   cancelOutlineGeneration: () => Promise<void>;
   loadCourse: () => Promise<void>;
+  consumeCurrentJobs: () => Promise<void>;
   reset: () => void;
   restartFlow: (options?: { keepInputs?: boolean }) => void;
   rehydrate: () => Promise<void>;
@@ -169,6 +171,7 @@ type ThemeGeneratorData = Omit<
   | 'cancelContentGeneration'
   | 'cancelOutlineGeneration'
   | 'loadCourse'
+  | 'consumeCurrentJobs'
   | 'reset'
   | 'restartFlow'
   | 'rehydrate'
@@ -263,6 +266,25 @@ const rememberDismissedJobs = (jobIds: (string | null | undefined)[]) => {
   if (changed) {
     storeDismissedJobIds(existing);
   }
+};
+
+const consumeJobsOnServer = async (jobIds: (string | null | undefined)[]) => {
+  const ids = jobIds
+    .map((id) => (typeof id === 'string' ? id.trim() : ''))
+    .filter((id): id is string => !!id);
+  if (ids.length === 0) return;
+  await Promise.allSettled(
+    ids.map((id) =>
+      fetch(apiUrl(`/api/pipeline/jobs/${encodeURIComponent(id)}/consume`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      }).then((res) => {
+        if (!res.ok) {
+          throw new Error(`consume failed: ${res.status}`);
+        }
+      }),
+    ),
+  );
 };
 
 export const useThemeGeneratorStore = create<ThemeGeneratorState>()((set, get) => ({
@@ -616,7 +638,7 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()((set, get) =
           }
         }
         await store.loadPath(slug);
-        let loadedPath = useLearningStore.getState().currentPath;
+        const loadedPath = useLearningStore.getState().currentPath;
         if (!loadedPath || loadedPath.subject !== slug) {
           try {
             await store.refreshLearningConfig({ slugs: [slug], force: true });
@@ -625,8 +647,24 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()((set, get) =
           }
           await store.loadPath(slug);
         }
+        await get().consumeCurrentJobs();
       }
     } catch {}
+  },
+
+  consumeCurrentJobs: async () => {
+    const { jobId, contentJobId } = get();
+    if (!jobId && !contentJobId) {
+      return;
+    }
+    await consumeJobsOnServer([jobId, contentJobId]);
+    rememberDismissedJobs([jobId, contentJobId]);
+    set((state) => ({
+      ...state,
+      jobId: state.jobId && state.jobId === jobId ? null : state.jobId,
+      contentJobId:
+        state.contentJobId && state.contentJobId === contentJobId ? null : state.contentJobId,
+    }));
   },
 
   reset: () => {
@@ -669,8 +707,8 @@ export const useThemeGeneratorStore = create<ThemeGeneratorState>()((set, get) =
       const rawOutlineJob = (outlineData?.job ?? null) as PipelineJobSnapshot | null;
       const rawContentJob = (contentData?.job ?? null) as PipelineJobSnapshot | null;
 
-      const outlineDismissed = !!rawOutlineJob && dismissed.has(rawOutlineJob.id);
-      const contentDismissed = !!rawContentJob && dismissed.has(rawContentJob.id);
+      const outlineDismissed = !!rawOutlineJob && (rawOutlineJob.consumed || dismissed.has(rawOutlineJob.id));
+      const contentDismissed = !!rawContentJob && (rawContentJob.consumed || dismissed.has(rawContentJob.id));
 
       const outlineJob = outlineDismissed ? null : rawOutlineJob;
       let contentJob = contentDismissed ? null : rawContentJob;

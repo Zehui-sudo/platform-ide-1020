@@ -649,8 +649,11 @@ const ContentReadyView = () => {
   const chapterCount = outlineResult?.reconstructed_outline?.groups?.length || 0;
   const pointCount = contentResult?.publishedFiles?.length || 0;
 
+  const [isStarting, setIsStarting] = useState(false);
+
   const handleStartLearning = async () => {
     try {
+      setIsStarting(true);
       // 从 contentResult 获取 slug
       const pub = contentResult?.publishDir;
       let slug = '';
@@ -669,6 +672,7 @@ const ContentReadyView = () => {
       
       if (slug) {
         const store = useLearningStore.getState();
+        const themeStore = useThemeGeneratorStore.getState();
         const subjects = store.availableSubjects;
         if (!subjects || !subjects.includes(slug)) {
           try {
@@ -680,6 +684,7 @@ const ContentReadyView = () => {
 
         // 先尝试加载 path
         await store.loadPath(slug);
+        await themeStore.consumeCurrentJobs();
 
         let loadedPath = useLearningStore.getState().currentPath;
         if (!loadedPath || loadedPath.subject !== slug) {
@@ -712,6 +717,8 @@ const ContentReadyView = () => {
       }
     } catch (error) {
       console.error('Failed to load course:', error);
+    } finally {
+      setIsStarting(false);
     }
   };
 
@@ -743,9 +750,19 @@ const ContentReadyView = () => {
           }}
         >再生成一个知识点</Button>
         <Button
-          className="h-7 px-2 text-xs"
+          className="h-7 px-2 text-xs transition-colors"
           onClick={handleStartLearning}
-        >现在开始学习！</Button>
+          disabled={isStarting}
+        >
+          {isStarting ? (
+            <span className="inline-flex items-center gap-1">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              加载中…
+            </span>
+          ) : (
+            '现在开始学习！'
+          )}
+        </Button>
       </div>
     </div>
   );
