@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 
@@ -7,11 +7,19 @@ export const runtime = 'nodejs';
 const PROJECT_ROOT = process.cwd();
 const LEARN_DATA_DIR = path.join(PROJECT_ROOT, 'public', 'learn-data');
 
+type RouteHandlerParams = Record<string, string | string[] | undefined>;
+type RouteHandlerContext = {
+  params: Promise<RouteHandlerParams>;
+};
+
 export async function GET(
-  _request: Request,
-  { params }: { params: { slug: string } },
+  _request: NextRequest,
+  context: RouteHandlerContext,
 ) {
-  const slug = params.slug?.trim();
+  const resolvedParams = await context.params;
+  const rawSlug = resolvedParams?.slug;
+  const slugValue = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug;
+  const slug = slugValue?.trim();
   if (!slug) {
     return NextResponse.json({ error: 'slug is required' }, { status: 400 });
   }
